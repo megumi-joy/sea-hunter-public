@@ -498,3 +498,9 @@ body {
 #island-panel-garrison { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-bottom: 10px; min-height: 16px; }
 #island-activate-btn { width: 100%; }
 #island-activate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Telegram Mini App compact mode ───── */
+.tg-mode #loading-screen .loader-content h1 { font-size: 1.6rem; }
+.tg-mode #main-menu .menu-title { font-size: 1.8rem; }
+.tg-mode #board { gap: 4px; }
+.tg-mode .card { width: 60px; height: 76px; }
