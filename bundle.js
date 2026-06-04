@@ -46,6 +46,199 @@ function getResult(attackerId, defenderId) {
   return result;
 }
 
+// ── islands.js ──
+// Islands — definitions, SVG generators, and game mechanics
+// Mechanic: island deck, capture, activate ability (1/turn, reset each round)
+
+const ISLANDS = [
+  {
+    id: 'fortress_rock',
+    name: 'Fortress Rock',
+    ability: 'Garrison: send a Reserve card here to protect it',
+    abilityType: 'garrison',
+    desc: 'Hide a card from combat. Retrieve it with Recall.',
+    color: '#4a5568',
+  },
+  {
+    id: 'palm_cove',
+    name: 'Palm Cove',
+    ability: 'Recall: return garrison card to your Reserve',
+    abilityType: 'recall',
+    desc: 'Pull back your stationed card into play.',
+    color: '#2d6a3f',
+  },
+  {
+    id: 'volcanic_peak',
+    name: 'Volcanic Peak',
+    ability: 'Strike: destroy a random visible enemy Frontline card',
+    abilityType: 'strike',
+    desc: 'Eruption destroys one face-up enemy.',
+    color: '#7b2d00',
+  },
+  {
+    id: 'fog_bank',
+    name: 'Fog Bank',
+    ability: 'Veil: flip one of your face-up Frontline cards face-down',
+    abilityType: 'veil',
+    desc: 'Hide a card from the enemy\'s view.',
+    color: '#2d3748',
+  },
+  {
+    id: 'coral_reef',
+    name: 'Coral Reef',
+    ability: 'Scout: reveal one face-down enemy card',
+    abilityType: 'scout',
+    desc: 'Intelligence on enemy position.',
+    color: '#00838f',
+  },
+];
+
+// SVG island art generator — unique look per island
+function islandSVG(island, size = 'small') {
+  const w = size === 'large' ? 90 : 32;
+  const h = size === 'large' ? 70 : 24;
+  const s = size === 'large' ? 2.5 : 1;
+
+  const defs = {
+    fortress_rock: `
+      <ellipse cx="${w/2}" cy="${h*0.8}" rx="${w*0.42}" ry="${h*0.18}" fill="#2a3240"/>
+      <rect x="${w*0.3}" y="${h*0.3}" width="${w*0.4}" height="${h*0.5}" rx="3" fill="#3a4a5c"/>
+      <rect x="${w*0.38}" y="${h*0.18}" width="${w*0.1}" height="${h*0.15}" fill="#3a4a5c"/>
+      <rect x="${w*0.52}" y="${h*0.18}" width="${w*0.1}" height="${h*0.15}" fill="#3a4a5c"/>
+      <rect x="${w*0.42}" y="${h*0.42}" width="${w*0.16}" height="${h*0.2}" fill="#1a2030"/>
+    `,
+    palm_cove: `
+      <ellipse cx="${w/2}" cy="${h*0.82}" rx="${w*0.44}" ry="${h*0.16}" fill="#1a3a2a"/>
+      <ellipse cx="${w/2}" cy="${h*0.78}" rx="${w*0.32}" ry="${h*0.12}" fill="#1e5a30"/>
+      <line x1="${w/2}" y1="${h*0.76}" x2="${w*0.38}" y2="${h*0.3}" stroke="#5d4037" stroke-width="${1.5*s}"/>
+      <ellipse cx="${w*0.38}" cy="${h*0.28}" rx="${w*0.14}" ry="${h*0.12}" fill="#2d8a3f"/>
+      <ellipse cx="${w*0.32}" cy="${h*0.32}" rx="${w*0.1}" ry="${h*0.08}" fill="#388e3c"/>
+      <ellipse cx="${w*0.46}" cy="${h*0.26}" rx="${w*0.1}" ry="${h*0.08}" fill="#388e3c"/>
+    `,
+    volcanic_peak: `
+      <ellipse cx="${w/2}" cy="${h*0.85}" rx="${w*0.44}" ry="${h*0.14}" fill="#3a1a0a"/>
+      <polygon points="${w/2},${h*0.1} ${w*0.28},${h*0.82} ${w*0.72},${h*0.82}" fill="#7b2d00"/>
+      <polygon points="${w/2},${h*0.1} ${w*0.38},${h*0.4} ${w*0.62},${h*0.4}" fill="#a33a00"/>
+      <ellipse cx="${w/2}" cy="${h*0.12}" rx="${w*0.08}" ry="${h*0.06}" fill="#ff6d00" opacity="0.8"/>
+    `,
+    fog_bank: `
+      <ellipse cx="${w/2}" cy="${h*0.8}" rx="${w*0.4}" ry="${h*0.14}" fill="#1a2030"/>
+      <ellipse cx="${w*0.35}" cy="${h*0.55}" rx="${w*0.22}" ry="${h*0.18}" fill="rgba(180,200,220,0.2)"/>
+      <ellipse cx="${w*0.55}" cy="${h*0.48}" rx="${w*0.26}" ry="${h*0.2}" fill="rgba(180,200,220,0.15)"/>
+      <ellipse cx="${w*0.45}" cy="${h*0.6}" rx="${w*0.3}" ry="${h*0.16}" fill="rgba(180,200,220,0.12)"/>
+    `,
+    coral_reef: `
+      <ellipse cx="${w/2}" cy="${h*0.82}" rx="${w*0.44}" ry="${h*0.15}" fill="#003840"/>
+      <ellipse cx="${w/2}" cy="${h*0.78}" rx="${w*0.3}" ry="${h*0.1}" fill="#004d5c"/>
+      <circle cx="${w*0.38}" cy="${h*0.6}" r="${w*0.07}" fill="#00838f" opacity="0.8"/>
+      <circle cx="${w*0.52}" cy="${h*0.55}" r="${w*0.09}" fill="#0097a7" opacity="0.8"/>
+      <circle cx="${w*0.45}" cy="${h*0.65}" r="${w*0.06}" fill="#00acc1" opacity="0.9"/>
+      <line x1="${w*0.38}" y1="${h*0.68}" x2="${w*0.38}" y2="${h*0.78}" stroke="#006064" stroke-width="${s}"/>
+      <line x1="${w*0.52}" y1="${h*0.64}" x2="${w*0.52}" y2="${h*0.78}" stroke="#006064" stroke-width="${s}"/>
+    `,
+  };
+
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none">
+    ${defs[island.id] || defs.palm_cove}
+  </svg>`;
+}
+
+// Game state for islands
+function createIslandState() {
+  const shuffled = [...ISLANDS].sort(() => Math.random() - 0.5);
+  return {
+    neutral: shuffled.slice(0, 3).map(isl => ({ ...isl, garrison: null, activated: false })),
+    p1: [],   // captured by player
+    p2: [],   // captured by AI
+  };
+}
+
+// Reset activations at round start
+function resetIslandActivations(islandState) {
+  [...islandState.neutral, ...islandState.p1, ...islandState.p2]
+    .forEach(isl => { isl.activated = false; });
+}
+
+// Apply island ability
+function activateIsland(islandState, island, state, player) {
+  if (island.activated) return { ok: false, msg: 'Already used this round' };
+
+  const myFront = player === 1 ? state.p1Front : state.p2Front;
+  const myReserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  const oppFront = player === 1 ? state.p2Front : state.p1Front;
+  let msg = '';
+
+  switch (island.abilityType) {
+    case 'garrison': {
+      // Send a reserve card to island
+      const card = myReserve.find(Boolean);
+      if (!card) return { ok: false, msg: 'No card in Reserve to station' };
+      const idx = myReserve.indexOf(card);
+      myReserve[idx] = null;
+      island.garrison = card;
+      msg = `${card.def.emoji} ${card.def.name} stationed on ${island.name}`;
+      break;
+    }
+    case 'recall': {
+      if (!island.garrison) return { ok: false, msg: 'No garrison to recall' };
+      const empty = myReserve.findIndex(c => c === null);
+      if (empty === -1) return { ok: false, msg: 'Reserve is full' };
+      myReserve[empty] = island.garrison;
+      msg = `${island.garrison.def.emoji} ${island.garrison.def.name} recalled from ${island.name}`;
+      island.garrison = null;
+      break;
+    }
+    case 'strike': {
+      const targets = oppFront.filter(Boolean).filter(c => c.faceUp);
+      if (!targets.length) return { ok: false, msg: 'No visible enemy targets' };
+      const target = targets[Math.floor(Math.random() * targets.length)];
+      const ti = oppFront.indexOf(target);
+      oppFront[ti] = null;
+      msg = `Volcanic Strike destroys ${target.def.emoji} ${target.def.name}!`;
+      break;
+    }
+    case 'veil': {
+      const visible = myFront.filter(Boolean).filter(c => c.faceUp);
+      if (!visible.length) return { ok: false, msg: 'No face-up cards to veil' };
+      visible[0].faceUp = false;
+      msg = `${visible[0].def.emoji} ${visible[0].def.name} veiled in fog`;
+      break;
+    }
+    case 'scout': {
+      const hidden = [...(player === 1 ? state.p2Front : state.p1Front), ...(player === 1 ? state.p2Reserve : state.p1Reserve)]
+        .find(c => c && !c.faceUp);
+      if (!hidden) return { ok: false, msg: 'No hidden enemy cards' };
+      hidden.faceUp = true;
+      msg = `Scout reveals ${hidden.def.emoji} ${hidden.def.name}`;
+      break;
+    }
+    default:
+      return { ok: false, msg: 'Unknown ability' };
+  }
+
+  island.activated = true;
+  return { ok: true, msg };
+}
+
+// Capture a neutral island: send a card from reserve there
+function captureIsland(islandState, islandId, state, player) {
+  const idx = islandState.neutral.findIndex(i => i.id === islandId);
+  if (idx === -1) return { ok: false, msg: 'Island not neutral' };
+
+  const myReserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  const card = myReserve.find(Boolean);
+  if (!card) return { ok: false, msg: 'Need a Reserve card to capture island' };
+
+  const ci = myReserve.indexOf(card);
+  myReserve[ci] = null;
+  const island = { ...islandState.neutral[idx], garrison: card, activated: false };
+  islandState.neutral.splice(idx, 1);
+  if (player === 1) islandState.p1.push(island);
+  else islandState.p2.push(island);
+
+  return { ok: true, msg: `${island.name} captured! ${card.def.emoji} ${card.def.name} garrisoned.` };
+}
+
 // ── game.js ──
 // Game state machine
 
@@ -641,15 +834,16 @@ const UI = { DOM, showScreen, setStatus, updateHUD, createCardEl,
 
 
 let state = null;
+let islandState = null;
 let selectedAttacker = null;
 let difficulty = 2;
-let combatLocked = false; // prevent double-clicks during animation
+let combatLocked = false;
+let openIsland = null; // currently open in panel
 
 // ── Boot ─────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   UI.renderRulesMatrix();
 
-  // Loading progress animation
   const prog = document.getElementById('load-progress');
   const label = document.getElementById('load-label');
   const steps = ['Loading fleet...', 'Shuffling cards...', 'Deploying AI...', 'Ready!'];
@@ -662,7 +856,6 @@ window.addEventListener('DOMContentLoaded', () => {
     if (pct >= 100) setTimeout(() => UI.showScreen('menu'), 300);
   }, 200);
 
-  // Menu
   document.getElementById('btn-single').addEventListener('click', startGame);
   document.querySelectorAll('.diff-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -672,7 +865,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Game buttons
   UI.DOM.btnAuto.addEventListener('click', doAutoPlace);
   UI.DOM.btnReady.addEventListener('click', doLockIn);
   UI.DOM.btnRules.addEventListener('click', () => UI.DOM.rulesModal.classList.remove('hidden'));
@@ -681,7 +873,10 @@ window.addEventListener('DOMContentLoaded', () => {
   UI.DOM.btnPlayAgain.addEventListener('click', startGame);
   UI.DOM.btnBackMenu.addEventListener('click', () => { UI.hideGameOver(); UI.showScreen('menu'); });
 
-  // Drop zones
+  // Island panel close
+  document.getElementById('island-panel-close').addEventListener('click', closeIslandPanel);
+  document.getElementById('island-activate-btn').addEventListener('click', onIslandActivate);
+
   UI.setupDropZones((handIdx, zone, slot) => {
     if (!state || state.phase !== PHASE.PREP) return;
     const res = placeCard(state, handIdx, zone, slot);
@@ -692,8 +887,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
 function startGame() {
   state = createGameState(difficulty);
+  islandState = createIslandState();
   selectedAttacker = null;
   combatLocked = false;
+  openIsland = null;
   UI.hideGameOver();
   UI.showScreen('game');
   UI.DOM.combatLog.classList.add('hidden');
@@ -701,6 +898,7 @@ function startGame() {
   UI.DOM.btnAuto.style.display = '';
   UI.DOM.btnReady.style.display = '';
   renderAll();
+  renderIslands();
   UI.setStatus('Drag cards to Frontline and Reserve, then press Ready!');
 }
 
@@ -721,22 +919,111 @@ function doLockIn() {
   UI.DOM.btnAuto.style.display = 'none';
   UI.DOM.btnReady.style.display = 'none';
 
-  // Show scout log
   if (res.scoutLog && res.scoutLog.length) {
     res.scoutLog.forEach(m => UI.addLogEntry(m, 'ability'));
   }
 
-  UI.setStatus('⚔️ Combat! Click your card, then click an enemy to attack.');
+  UI.setStatus('Combat! Click your card, then click an enemy to attack.');
   renderAll();
 
-  if (state.turnOwner === 2) {
-    setTimeout(() => doAiTurn(), 1000);
-  }
+  if (state.turnOwner === 2) setTimeout(() => doAiTurn(), 1000);
 }
 
 function updateReadyButton() {
   const placed = state.p1Front.filter(Boolean).length + state.p1Reserve.filter(Boolean).length;
   UI.DOM.btnReady.disabled = placed < 4;
+}
+
+// ── Island Panel ─────────────────────────────────────────────────
+function openIslandPanel(island, owner) {
+  openIsland = { island, owner };
+  const panel = document.getElementById('island-panel');
+  const canActivate = owner === 'p1' && !island.activated && state && state.phase === PHASE.COMBAT && state.turnOwner === 1 && !combatLocked;
+  const isCaptureable = owner === 'neutral' && state && state.phase === PHASE.COMBAT && state.turnOwner === 1 && !combatLocked;
+
+  document.getElementById('island-panel-svg').innerHTML = islandSVG(island, 'large');
+  document.getElementById('island-panel-name').textContent = island.name;
+  document.getElementById('island-panel-ability').textContent = island.ability;
+  document.getElementById('island-panel-garrison').textContent = island.garrison
+    ? `Garrison: ${island.garrison.def.emoji} ${island.garrison.def.name}`
+    : (owner === 'neutral' ? 'Neutral — capture to use' : owner === 'p2' ? 'Enemy island' : 'No garrison');
+
+  const btn = document.getElementById('island-activate-btn');
+  if (isCaptureable) {
+    btn.textContent = 'Capture Island';
+    btn.disabled = !state.p1Reserve.some(Boolean);
+  } else {
+    btn.textContent = island.activated ? 'Used this round' : 'Activate';
+    btn.disabled = !canActivate;
+  }
+
+  panel.classList.remove('hidden');
+}
+
+function closeIslandPanel() {
+  document.getElementById('island-panel').classList.add('hidden');
+  openIsland = null;
+}
+
+function onIslandActivate() {
+  if (!openIsland || !state) return;
+  const { island, owner } = openIsland;
+
+  let result;
+  if (owner === 'neutral') {
+    result = captureIsland(islandState, island.id, state, 1);
+  } else if (owner === 'p1') {
+    result = activateIsland(islandState, island, state, 1);
+  } else {
+    return;
+  }
+
+  if (!result.ok) { UI.setStatus(result.msg); return; }
+
+  UI.addLogEntry(result.msg, 'ability');
+  UI.setStatus(result.msg);
+  closeIslandPanel();
+  renderAll();
+  renderIslands();
+
+  // Using island ability ends the turn
+  if (owner === 'p1' && !combatLocked) {
+    state.turnOwner = 2;
+    setTimeout(() => doAiTurn(), 800);
+  }
+}
+
+// ── Island Rendering ─────────────────────────────────────────────
+function renderIslands() {
+  if (!islandState) return;
+
+  const renderSlots = (containerId, islands, owner) => {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '';
+    islands.forEach(isl => {
+      const card = document.createElement('div');
+      card.className = `island-card ${owner === 'neutral' ? 'neutral-island' : owner === 'p1' ? 'captured-player' : 'captured-opp'}`;
+      if (isl.activated) card.classList.add('used');
+      card.innerHTML = islandSVG(isl, 'small') + `<div class="island-card-name">${isl.name}</div>`;
+      if (isl.garrison) {
+        const dot = document.createElement('div');
+        dot.className = 'island-garrison-dot';
+        dot.title = `Garrison: ${isl.garrison.def.name}`;
+        card.appendChild(dot);
+      }
+      card.addEventListener('click', () => {
+        if (openIsland && openIsland.island === isl) { closeIslandPanel(); return; }
+        openIslandPanel(isl, owner);
+      });
+      el.appendChild(card);
+    });
+    if (!islands.length) el.innerHTML = '<div style="opacity:0.3;font-size:0.6rem;padding:4px">–</div>';
+  };
+
+  renderSlots('opp-island-slots', islandState.p2, 'p2');
+  renderSlots('neutral-island-slots', islandState.neutral, 'neutral');
+  renderSlots('player-island-slots', islandState.p1, 'p1');
 }
 
 // ── Combat Phase ─────────────────────────────────────────────────
@@ -770,7 +1057,7 @@ function onPlayerReserveClick(slot, card) {
 
   const res = moveReserveToFront(state, slot, 1);
   if (!res.ok) { UI.setStatus(res.msg); return; }
-  UI.addLogEntry(`🔄 ${card.def.emoji} ${card.def.name} → front`, 'move');
+  UI.addLogEntry(`${card.def.emoji} ${card.def.name} moved to front`, 'move');
   UI.setStatus(res.msg);
   renderAll();
 
@@ -793,27 +1080,17 @@ async function onOppCardClick(slot, card, slotEl) {
     return;
   }
 
-  // ── Animate attack ──
   UI.setStatus(`${res.atkCard.def.emoji} attacks ${res.defCard.def.emoji}...`);
   await UI.animateAttack(res.atkCard, res.defCard, res.result);
 
-  // Show result
   UI.addLogEntry(res.msg, res.result === 'WIN' ? 'win' : res.result === 'LOSS' ? 'loss' : 'draw');
   UI.setStatus(res.msg);
 
-  // Handle side effects
   if (res.sideEffects) {
     for (const fx of res.sideEffects) {
-      if (fx.type === 'shield') {
-        UI.addLogEntry(`🛡️ ${res.atkCard.def.emoji} ${res.atkCard.def.name} fortified!`, 'ability');
-        UI.showShieldEffect(res.atkCard.uid);
-      }
-      if (fx.type === 'broadside') {
-        UI.addLogEntry(`⚡ Broadside destroys ${fx.card.def.emoji} ${fx.card.def.name}!`, 'ability');
-      }
-      if (fx.type === 'bonus_draw') {
-        UI.addLogEntry(`🃏 Landing Craft: bonus card next round!`, 'ability');
-      }
+      if (fx.type === 'shield') { UI.addLogEntry(`${res.atkCard.def.emoji} fortified!`, 'ability'); UI.showShieldEffect(res.atkCard.uid); }
+      if (fx.type === 'broadside') UI.addLogEntry(`Broadside destroys ${fx.card.def.emoji} ${fx.card.def.name}!`, 'ability');
+      if (fx.type === 'bonus_draw') UI.addLogEntry('Landing Craft: bonus card next round!', 'ability');
     }
   }
 
@@ -824,22 +1101,21 @@ async function onOppCardClick(slot, card, slotEl) {
   const end = checkRoundEnd(state);
   if (end) { combatLocked = false; handleRoundEnd(end); return; }
 
-  // Cruiser extra attack
   const hasExtraAttack = res.sideEffects && res.sideEffects.some(e => e.type === 'extra_attack');
   if (hasExtraAttack) {
-    UI.addLogEntry(`⚡ Cruiser Pursuit: attack again!`, 'ability');
-    UI.setStatus('⚡ Pursuit! Pick another target to attack again.');
+    UI.addLogEntry('Cruiser Pursuit: attack again!', 'ability');
+    UI.setStatus('Pursuit! Pick another target to attack again.');
     combatLocked = false;
     return;
   }
 
   combatLocked = false;
   if (state.turnOwner === 2) {
-    UI.setStatus('🌊 AI is planning...');
+    UI.setStatus('AI is planning...');
     await UI.sleep(900);
     doAiTurn();
   } else {
-    UI.setStatus('Your turn! Click a card to attack.');
+    UI.setStatus('Your turn! Click a card to attack, or activate an island.');
   }
 }
 
@@ -847,14 +1123,33 @@ async function doAiTurn() {
   if (!state || state.turnOwner !== 2 || state.phase !== PHASE.COMBAT || combatLocked) return;
   combatLocked = true;
 
-  UI.setStatus('🌊 AI is planning...');
+  UI.setStatus('AI is planning...');
   await UI.sleep(700);
+
+  // AI occasionally uses its captured islands
+  if (islandState.p2.length && Math.random() > 0.6) {
+    const unusedIsl = islandState.p2.find(i => !i.activated);
+    if (unusedIsl) {
+      const res = activateIsland(islandState, unusedIsl, state, 2);
+      if (res.ok) {
+        UI.addLogEntry(`AI: ${res.msg}`, 'ability');
+        UI.setStatus(res.msg);
+        renderIslands();
+        await UI.sleep(600);
+        // After island ability, AI's turn ends — go to player
+        combatLocked = false;
+        state.turnOwner = 1;
+        UI.setStatus('Your turn!');
+        return;
+      }
+    }
+  }
 
   const actions = aiTurn(state);
 
   for (const a of actions) {
     if (a.type === 'attack') {
-      UI.setStatus(`🌊 AI: ${a.atkCard?.def?.emoji} attacks ${a.defCard?.def?.emoji}...`);
+      UI.setStatus(`AI: ${a.atkCard?.def?.emoji} attacks ${a.defCard?.def?.emoji}...`);
       if (a.atkCard && a.defCard) await UI.animateAttack(a.atkCard, a.defCard, a.result);
     }
     UI.addLogEntry(a.msg, a.type === 'attack' ? (a.result === 'WIN' ? 'loss' : 'win') : 'move');
@@ -868,17 +1163,16 @@ async function doAiTurn() {
   if (end) { combatLocked = false; handleRoundEnd(end); return; }
 
   combatLocked = false;
-  if (state.turnOwner === 1) {
-    UI.setStatus('Your turn! Click a card to attack.');
-  }
+  if (state.turnOwner === 1) UI.setStatus('Your turn! Click a card or activate an island.');
 }
 
 function handleRoundEnd(end) {
   UI.addLogEntry(end.msg, 'round');
-  if (end.gameOver) {
-    setTimeout(() => UI.showGameOver(state), 800);
-    return;
-  }
+  // Reset island activations for next round
+  if (islandState) resetIslandActivations(islandState);
+  renderIslands();
+
+  if (end.gameOver) { setTimeout(() => UI.showGameOver(state), 800); return; }
   UI.setStatus(end.msg + ' — Place cards for next round!');
   UI.DOM.btnAuto.style.display = '';
   UI.DOM.btnReady.style.display = '';
@@ -886,7 +1180,7 @@ function handleRoundEnd(end) {
   renderAll();
 }
 
-// ── Rendering ────────────────────────────────────────────────────
+// ── Rendering ─────────────────────────────────────────────────────
 function renderAll() {
   if (!state) return;
   UI.updateHUD(state);
@@ -906,7 +1200,7 @@ function renderAll() {
 }
 
 function onHandCardClick(idx, card) {
-  UI.setStatus(`${card.def.emoji} ${card.def.name} — drag to a slot, or click a slot to place`);
+  UI.setStatus(`${card.def.emoji} ${card.def.name} — drag to a slot`);
 }
 
 function onPrepCardClick(slot, card) {

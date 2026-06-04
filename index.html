@@ -93,40 +93,49 @@
       </div>
     </div>
 
-    <!-- Battle Divider -->
+    <!-- Battle Divider + Island Zone -->
     <div class="battle-divider">
       <div class="wave"></div>
       <span>BATTLE LINE</span>
       <div class="wave"></div>
-      <!-- Islands -->
-      <svg class="island-left" width="38" height="28" viewBox="0 0 38 28" fill="none">
-        <ellipse cx="19" cy="22" rx="16" ry="5" fill="#1a3a2a" opacity="0.9"/>
-        <ellipse cx="19" cy="21" rx="12" ry="3.5" fill="#1e4a30"/>
-        <path d="M18 20 Q17 10 14 4 Q18 8 19 4 Q20 8 24 4 Q21 10 20 20Z" fill="#2d6a3f"/>
-        <path d="M16 12 Q14 9 12 10" stroke="#2d6a3f" stroke-width="1.5" fill="none"/>
-        <path d="M22 10 Q24 8 26 9" stroke="#2d6a3f" stroke-width="1.5" fill="none"/>
-        <ellipse cx="13" cy="23" rx="3" ry="1.2" fill="#0a1f14" opacity="0.5"/>
-        <ellipse cx="26" cy="23" rx="2.5" ry="1" fill="#0a1f14" opacity="0.4"/>
-      </svg>
-      <svg class="island-right" width="32" height="24" viewBox="0 0 32 24" fill="none">
-        <ellipse cx="16" cy="19" rx="13" ry="4" fill="#1a3a2a" opacity="0.9"/>
-        <ellipse cx="16" cy="18" rx="9" ry="2.8" fill="#1e4a30"/>
-        <path d="M15 17 Q15 9 13 3 Q16 7 16 3 Q17 7 19 3 Q18 9 17 17Z" fill="#2d6a3f"/>
-        <ellipse cx="10" cy="20" rx="2.5" ry="1" fill="#0a1f14" opacity="0.4"/>
-        <ellipse cx="22" cy="19.5" rx="2" ry="0.9" fill="#0a1f14" opacity="0.35"/>
-      </svg>
+    </div>
+
+    <!-- Island Row -->
+    <div id="island-row">
+      <div class="island-zone" id="opp-islands">
+        <div class="island-zone-label">OPPONENT ISLANDS</div>
+        <div class="island-slots" id="opp-island-slots"></div>
+      </div>
+      <div class="island-neutral" id="neutral-islands">
+        <div class="island-zone-label">NEUTRAL</div>
+        <div class="island-slots" id="neutral-island-slots"></div>
+      </div>
+      <div class="island-zone" id="player-islands">
+        <div class="island-zone-label">YOUR ISLANDS</div>
+        <div class="island-slots" id="player-island-slots"></div>
+      </div>
+    </div>
+
+    <!-- Island Detail Panel (zoom popup) -->
+    <div id="island-panel" class="hidden">
+      <button id="island-panel-close">✕</button>
+      <div id="island-panel-svg"></div>
+      <div id="island-panel-name"></div>
+      <div id="island-panel-ability"></div>
+      <div id="island-panel-garrison"></div>
+      <button id="island-activate-btn" class="btn-action">Activate</button>
     </div>
 
     <!-- Player -->
     <div class="board-section player-section">
-      <div class="zone-label">🎯 YOUR FRONTLINE</div>
+      <div class="zone-label">YOUR FRONTLINE</div>
       <div id="player-front" class="card-zone front-zone">
         <div class="slot" data-zone="player-front" data-slot="0"></div>
         <div class="slot" data-zone="player-front" data-slot="1"></div>
         <div class="slot" data-zone="player-front" data-slot="2"></div>
         <div class="slot" data-zone="player-front" data-slot="3"></div>
       </div>
-      <div class="zone-label">🛡️ YOUR RESERVE</div>
+      <div class="zone-label">YOUR RESERVE</div>
       <div id="player-reserve" class="card-zone reserve-zone">
         <div class="slot" data-zone="player-reserve" data-slot="0"></div>
         <div class="slot" data-zone="player-reserve" data-slot="1"></div>
