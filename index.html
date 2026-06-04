@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sea Hunter — Card Battle</title>
+<meta name="description" content="Sea Hunter — strategic naval card battle game. Place your fleet, outsmart the AI opponent in tactical combat."/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚓</text></svg>"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<!-- Loading -->
+<div id="loading-screen">
+  <div class="loader-content">
+    <div class="wave-container">
+      <div class="wave-bar" style="--i:0"></div>
+      <div class="wave-bar" style="--i:1"></div>
+      <div class="wave-bar" style="--i:2"></div>
+      <div class="wave-bar" style="--i:3"></div>
+      <div class="wave-bar" style="--i:4"></div>
+      <div class="wave-bar" style="--i:5"></div>
+      <div class="wave-bar" style="--i:6"></div>
+    </div>
+    <h1>Sea Hunter</h1>
+    <div class="progress-track">
+      <div class="progress-fill" id="load-progress"></div>
+    </div>
+    <p id="load-label">Loading fleet...</p>
+  </div>
+</div>
+
+<!-- Main Menu -->
+<div id="main-menu" class="screen hidden">
+  <div class="menu-bg"></div>
+  <div class="menu-content">
+    <h1 class="menu-title">⚓ Sea Hunter</h1>
+    <p class="menu-sub">Naval Card Battle</p>
+    <div class="menu-buttons">
+      <button id="btn-single" class="btn-primary">⚔️ Single Player</button>
+      <button id="btn-campaign" class="btn-secondary" disabled>🗺️ Campaign</button>
+      <button id="btn-multi" class="btn-secondary" disabled>🌐 Multiplayer</button>
+      <button id="btn-leaders" class="btn-secondary" disabled>🏆 Leaderboard</button>
+    </div>
+    <div class="difficulty-select">
+      <label>Difficulty:</label>
+      <button class="diff-btn active" data-diff="1">🟢 Easy</button>
+      <button class="diff-btn" data-diff="2">🟡 Medium</button>
+      <button class="diff-btn" data-diff="3">🔴 Hard</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game Board -->
+<div id="game-screen" class="screen hidden">
+  <!-- Top HUD -->
+  <div id="hud-top">
+    <div class="hud-left">
+      <span id="round-info">Round 1/10</span>
+      <span id="score-info">0 : 0</span>
+    </div>
+    <div class="hud-center">
+      <span id="phase-label">PREPARATION</span>
+    </div>
+    <div class="hud-right">
+      <button id="btn-rules" class="btn-icon" title="Rules">📖</button>
+      <button id="btn-pause" class="btn-icon" title="Menu">☰</button>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div id="status-bar">
+    <span id="status-text">Place your cards: drag to Frontline or Reserve</span>
+  </div>
+
+  <!-- Board -->
+  <div id="board">
+    <!-- Opponent -->
+    <div class="board-section opponent-section">
+      <div class="zone-label">OPPONENT RESERVE</div>
+      <div id="opp-reserve" class="card-zone reserve-zone">
+        <div class="slot" data-zone="opp-reserve" data-slot="0"></div>
+        <div class="slot" data-zone="opp-reserve" data-slot="1"></div>
+        <div class="slot" data-zone="opp-reserve" data-slot="2"></div>
+        <div class="slot" data-zone="opp-reserve" data-slot="3"></div>
+      </div>
+      <div class="zone-label">OPPONENT FRONTLINE</div>
+      <div id="opp-front" class="card-zone front-zone">
+        <div class="slot" data-zone="opp-front" data-slot="0"></div>
+        <div class="slot" data-zone="opp-front" data-slot="1"></div>
+        <div class="slot" data-zone="opp-front" data-slot="2"></div>
+        <div class="slot" data-zone="opp-front" data-slot="3"></div>
+      </div>
+    </div>
+
+    <!-- Battle Divider -->
+    <div class="battle-divider">
+      <div class="wave"></div>
+      <span>BATTLE LINE</span>
+      <div class="wave"></div>
+      <!-- Islands -->
+      <svg class="island-left" width="38" height="28" viewBox="0 0 38 28" fill="none">
+        <ellipse cx="19" cy="22" rx="16" ry="5" fill="#1a3a2a" opacity="0.9"/>
+        <ellipse cx="19" cy="21" rx="12" ry="3.5" fill="#1e4a30"/>
+        <path d="M18 20 Q17 10 14 4 Q18 8 19 4 Q20 8 24 4 Q21 10 20 20Z" fill="#2d6a3f"/>
+        <path d="M16 12 Q14 9 12 10" stroke="#2d6a3f" stroke-width="1.5" fill="none"/>
+        <path d="M22 10 Q24 8 26 9" stroke="#2d6a3f" stroke-width="1.5" fill="none"/>
+        <ellipse cx="13" cy="23" rx="3" ry="1.2" fill="#0a1f14" opacity="0.5"/>
+        <ellipse cx="26" cy="23" rx="2.5" ry="1" fill="#0a1f14" opacity="0.4"/>
+      </svg>
+      <svg class="island-right" width="32" height="24" viewBox="0 0 32 24" fill="none">
+        <ellipse cx="16" cy="19" rx="13" ry="4" fill="#1a3a2a" opacity="0.9"/>
+        <ellipse cx="16" cy="18" rx="9" ry="2.8" fill="#1e4a30"/>
+        <path d="M15 17 Q15 9 13 3 Q16 7 16 3 Q17 7 19 3 Q18 9 17 17Z" fill="#2d6a3f"/>
+        <ellipse cx="10" cy="20" rx="2.5" ry="1" fill="#0a1f14" opacity="0.4"/>
+        <ellipse cx="22" cy="19.5" rx="2" ry="0.9" fill="#0a1f14" opacity="0.35"/>
+      </svg>
+    </div>
+
+    <!-- Player -->
+    <div class="board-section player-section">
+      <div class="zone-label">🎯 YOUR FRONTLINE</div>
+      <div id="player-front" class="card-zone front-zone">
+        <div class="slot" data-zone="player-front" data-slot="0"></div>
+        <div class="slot" data-zone="player-front" data-slot="1"></div>
+        <div class="slot" data-zone="player-front" data-slot="2"></div>
+        <div class="slot" data-zone="player-front" data-slot="3"></div>
+      </div>
+      <div class="zone-label">🛡️ YOUR RESERVE</div>
+      <div id="player-reserve" class="card-zone reserve-zone">
+        <div class="slot" data-zone="player-reserve" data-slot="0"></div>
+        <div class="slot" data-zone="player-reserve" data-slot="1"></div>
+        <div class="slot" data-zone="player-reserve" data-slot="2"></div>
+        <div class="slot" data-zone="player-reserve" data-slot="3"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Player Hand -->
+  <div id="hand-area">
+    <div class="hand-label">YOUR HAND</div>
+    <div id="player-hand" class="hand-container"></div>
+    <div class="hand-actions">
+      <button id="btn-auto" class="btn-action">🎲 Auto Place</button>
+      <button id="btn-ready" class="btn-action btn-go" disabled>⚔️ Ready!</button>
+    </div>
+  </div>
+
+  <!-- Combat Log -->
+  <div id="combat-log" class="hidden">
+    <div class="log-header">📋 Combat Log</div>
+    <div id="log-entries"></div>
+  </div>
+</div>
+
+<!-- Rules Modal -->
+<div id="rules-modal" class="modal hidden">
+  <div class="modal-content">
+    <button class="modal-close" id="btn-close-rules">✕</button>
+    <h2>📖 Impact Matrix</h2>
+    <p>Attacker (row) vs Defender (column)</p>
+    <div id="matrix-table"></div>
+    <p class="legend">✓ = Win &nbsp; ✗ = Lose &nbsp; = = Both destroyed &nbsp; · = No interaction</p>
+    <p class="legend">💣 Mine cannot initiate attacks (passive defense)</p>
+    <p class="legend">🛡️ Must clear Frontline before attacking Reserve</p>
+  </div>
+</div>
+
+<!-- Game Over -->
+<div id="game-over-modal" class="modal hidden">
+  <div class="modal-content game-over-content">
+    <div id="go-icon" class="go-icon">🏆</div>
+    <h2 id="go-title">Victory!</h2>
+    <p id="go-score">5 : 3</p>
+    <p id="go-rounds">in 10 rounds</p>
+    <button id="btn-play-again" class="btn-primary">Play Again</button>
+    <button id="btn-back-menu" class="btn-secondary">Main Menu</button>
+  </div>
+</div>
+
+<script src="bundle.js"></script>
+</body>
+</html>
