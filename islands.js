@@ -1,6 +1,28 @@
 // Islands — definitions, SVG generators, and game mechanics
 // Mechanic: island deck, capture, activate ability (1/turn, reset each round)
-
+//
+// ISLAND GARRISON RULING (owner, 2026-08-14 -- see
+// ~/.voicy/games_session/SEAHUNTER_QA_FINDINGS.md): capturing an island
+// GARRISONS it with a unit (the unit stays "on" the island, see
+// island.garrison below) rather than sacrificing it, and only the round's
+// WINNER gets to capture (previously this repo let either player capture
+// any neutral island on any turn during ongoing combat, with no tie to who
+// actually won that round -- see game.js's checkRoundEnd / app.js's
+// beginIslandCapturePhase). Score is DERIVED from currently-held
+// (garrisoned) islands every round-end (see recomputeScore), never an
+// incremental round-win counter -- an island can later drain (its garrison
+// pulled by Recall, nothing left to refill it at round-end -- see
+// retallyGarrisons) and take its point back with it.
+//
+// This repo's own island roster (Fortress Rock / Palm Cove / Volcanic Peak
+// / Fog Bank / Coral Reef) and its "3 simultaneous neutral islands" board
+// structure are kept as-is -- they're this build's own flavor, not part of
+// the cardboard garrison model being reconciled here (the cardboard rules
+// only specify ONE contested island per round; this repo predates that
+// convention and uses a different, self-consistent island-deck shape).
+// What's been aligned to the cardboard/canon (www/games/sea-hunter-cards)
+// model is the RULES layer: capture gated on round-win + eligible unit,
+// garrison-not-sacrifice, derived scoring, round-end retally.
 export const ISLANDS = [
   {
     id: 'fortress_rock',
@@ -110,8 +132,25 @@ export function resetIslandActivations(islandState) {
     .forEach(isl => { isl.activated = false; });
 }
 
+// Which unit types can capture/garrison an island -- ships and the one air
+// unit. Matches the canon web build's CAPTURE_ELIGIBLE list exactly (see
+// www/games/sea-hunter-cards/game.js, verified there against the
+// authoritative Godot source) -- Landing Craft, Coastal Artillery, and Mine
+// (the 0-strength/defensive units) cannot capture or garrison an island.
+export const CAPTURE_ELIGIBLE = ['battleship', 'cruiser', 'destroyer', 'patrol_ship', 'sea_hunter', 'plane', 'submarine'];
+
+// Does `player` have ANY unit on the field eligible to capture an island
+// with? Used to auto-skip the island-capture opportunity when the round's
+// winner has nothing that qualifies (Mine/Landing Craft/Coastal Artillery
+// survivors only) -- mirrors the canon web build's hasEligibleCapturer().
+export function hasEligibleCapturer(state, player) {
+  const front = player === 1 ? state.p1Front : state.p2Front;
+  const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  return [...front, ...reserve].some(c => c && CAPTURE_ELIGIBLE.includes(c.def.id));
+}
+
 // Apply island ability
-export function activateIsland(islandState, island, state, player) {
+export function activateIsland(islandState, island, state, player, targetIslandId) {
   if (island.activated) return { ok: false, msg: 'Already used this round' };
 
   const myFront = player === 1 ? state.p1Front : state.p2Front;
@@ -131,12 +170,24 @@ export function activateIsland(islandState, island, state, player) {
       break;
     }
     case 'recall': {
-      if (!island.garrison) return { ok: false, msg: 'No garrison to recall' };
+      // F5 RULING (owner, 2026-08-14): Recall pulls a unit off ANY island
+      // the player currently holds, not just this island's (Palm Cove's)
+      // own garrison -- matches the canon web build's Maneuver power (see
+      // www/games/sea-hunter-cards/game.js's usePower() maneuver branch).
+      // targetIslandId picks which held island to un-garrison (see app.js's
+      // beginRecallTargeting for the island-picker UI); falls back to the
+      // first held island with a garrison if omitted, same fallback the
+      // canon engine uses. Can target this very island (Palm Cove itself)
+      // if it's the one still garrisoned.
+      const held = player === 1 ? islandState.p1 : islandState.p2;
+      let target = targetIslandId ? held.find(i => i.id === targetIslandId && i.garrison) : null;
+      if (!target) target = held.find(i => i.garrison);
+      if (!target) return { ok: false, msg: 'No garrisoned island to recall a unit from' };
       const empty = myReserve.findIndex(c => c === null);
       if (empty === -1) return { ok: false, msg: 'Reserve is full' };
-      myReserve[empty] = island.garrison;
-      msg = `${island.garrison.def.emoji} ${island.garrison.def.name} recalled from ${island.name}`;
-      island.garrison = null;
+      myReserve[empty] = target.garrison;
+      msg = `${target.garrison.def.emoji} ${target.garrison.def.name} recalled from ${target.name}`;
+      target.garrison = null;
       break;
     }
     case 'strike': {
@@ -171,21 +222,90 @@ export function activateIsland(islandState, island, state, player) {
   return { ok: true, msg };
 }
 
-// Capture a neutral island: send a card from reserve there
-export function captureIsland(islandState, islandId, state, player) {
+// Capture a neutral island: garrison it with a specific eligible unit from
+// the round winner's Front/Reserve.
+// ISLAND GARRISON RULING (owner, 2026-08-14): capturing is a GARRISON, not
+// a sacrifice -- the unit leaves the field and sits as island.garrison (see
+// retallyGarrisons below for what happens to it later); it is not
+// discarded. Only callable during the ISLAND_CAPTURE opportunity right
+// after winning a round's combat (see game.js's checkRoundEnd / app.js's
+// beginIslandCapturePhase) -- previously this was reachable any turn during
+// ongoing COMBAT with any random Reserve card (no round-win tie, no
+// eligibility check), which didn't match the cardboard rule ("win that
+// round's combat, THEN place a qualifying [ship/plane] unit... to
+// capture").
+export function captureIsland(islandState, islandId, state, player, slot, zone) {
   const idx = islandState.neutral.findIndex(i => i.id === islandId);
   if (idx === -1) return { ok: false, msg: 'Island not neutral' };
 
-  const myReserve = player === 1 ? state.p1Reserve : state.p2Reserve;
-  const card = myReserve.find(Boolean);
-  if (!card) return { ok: false, msg: 'Need a Reserve card to capture island' };
+  const front = player === 1 ? state.p1Front : state.p2Front;
+  const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  const zoneArr = zone === 'front' ? front : reserve;
+  const card = zoneArr ? zoneArr[slot] : null;
+  if (!card) return { ok: false, msg: 'No card in that slot' };
+  if (!CAPTURE_ELIGIBLE.includes(card.def.id)) return { ok: false, msg: 'Only ships or planes can capture an island' };
 
-  const ci = myReserve.indexOf(card);
-  myReserve[ci] = null;
+  zoneArr[slot] = null;
   const island = { ...islandState.neutral[idx], garrison: card, activated: false };
   islandState.neutral.splice(idx, 1);
   if (player === 1) islandState.p1.push(island);
   else islandState.p2.push(island);
 
   return { ok: true, msg: `${island.name} captured! ${card.def.emoji} ${card.def.name} garrisoned.` };
+}
+
+// ISLAND RULING refinement 2 (owner, 2026-08-14): re-evaluate every island
+// `player` currently holds, independent of who won/lost/drew this round. A
+// still-garrisoned island is left untouched (the common case). An island
+// with an EMPTY garrison slot either auto-refills from another qualifying
+// Front/Reserve unit (island kept, no click needed) or drains -- returned
+// to the neutral pool (recapturable later by either side), its point lost
+// with it -- if the player has nothing left to place. Mirrors the canon web
+// build's retallyGarrisons() in game.js. Returns a player-facing log string
+// (may be empty).
+export function retallyGarrisons(islandState, state, player) {
+  const held = player === 1 ? islandState.p1 : islandState.p2;
+  const front = player === 1 ? state.p1Front : state.p2Front;
+  const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  const who = player === 1 ? 'Your' : "The AI's";
+  let msg = '';
+
+  for (let i = held.length - 1; i >= 0; i--) {
+    const island = held[i];
+    if (island.garrison) continue; // still garrisoned -- nothing to do
+
+    let refilled = false;
+    for (const list of [front, reserve]) {
+      for (let s = 0; s < list.length; s++) {
+        const c = list[s];
+        if (c && CAPTURE_ELIGIBLE.includes(c.def.id)) {
+          list[s] = null;
+          island.garrison = c;
+          refilled = true;
+          break;
+        }
+      }
+      if (refilled) break;
+    }
+
+    if (refilled) {
+      msg += `${who} ${island.name} garrison is resupplied -- island held!\n`;
+    } else {
+      held.splice(i, 1);
+      islandState.neutral.push({ ...island, garrison: null, activated: false });
+      msg += `${who} ${island.name} garrison is empty -- the island drains!\n`;
+    }
+  }
+  return msg;
+}
+
+// Score = number of islands each player currently HOLDS (garrisoned) -- see
+// ISLAND GARRISON RULING. Always derived fresh from islandState.p1/p2
+// (never an incremental round-win counter, unlike this file's original
+// design) so capture, auto-refill, and drain can never drift out of sync
+// with the displayed score. This roster has no Two-Island-style
+// double-value island, so every held island is worth a flat 1 point.
+export function recomputeScore(state, islandState) {
+  state.score[0] = islandState.p1.length;
+  state.score[1] = islandState.p2.length;
 }

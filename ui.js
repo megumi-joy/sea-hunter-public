@@ -1,6 +1,6 @@
 // UI rendering — DOM, card elements, animations
 import { CARDS, CARD_ORDER, IMPACT } from './cards.js';
-import { ZONE_SIZE, PHASE } from './game.js';
+import { ZONE_SIZE, PHASE, POINTS_TO_WIN } from './game.js';
 
 const $ = id => document.getElementById(id);
 
@@ -32,8 +32,10 @@ export function setStatus(msg) { DOM.statusText.textContent = msg; }
 
 export function updateHUD(state) {
   DOM.roundInfo.textContent = `Round ${state.round}/10`;
-  DOM.scoreInfo.textContent = `${state.score[0]} : ${state.score[1]}`;
-  DOM.phaseLabel.textContent = state.phase === PHASE.PREP ? 'PREPARATION' : state.phase === PHASE.COMBAT ? 'COMBAT' : state.phase;
+  // Score = islands currently held (see islands.js's recomputeScore) --
+  // first to POINTS_TO_WIN wins; MAX_ROUNDS is only a fallback tiebreak.
+  DOM.scoreInfo.textContent = `${state.score[0]} : ${state.score[1]} (first to ${POINTS_TO_WIN})`;
+  DOM.phaseLabel.textContent = state.phase === PHASE.PREP ? 'PREPARATION' : state.phase === PHASE.COMBAT ? 'COMBAT' : state.phase === PHASE.ISLAND_CAPTURE ? 'ISLAND CAPTURE' : state.phase;
   DOM.phaseLabel.style.color = state.phase === PHASE.COMBAT ? '#ff5252' : '#ffd54f';
 }
 

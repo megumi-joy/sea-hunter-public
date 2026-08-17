@@ -49,7 +49,29 @@ function getResult(attackerId, defenderId) {
 // ── islands.js ──
 // Islands — definitions, SVG generators, and game mechanics
 // Mechanic: island deck, capture, activate ability (1/turn, reset each round)
-
+//
+// ISLAND GARRISON RULING (owner, 2026-08-14 -- see
+// ~/.voicy/games_session/SEAHUNTER_QA_FINDINGS.md): capturing an island
+// GARRISONS it with a unit (the unit stays "on" the island, see
+// island.garrison below) rather than sacrificing it, and only the round's
+// WINNER gets to capture (previously this repo let either player capture
+// any neutral island on any turn during ongoing combat, with no tie to who
+// actually won that round -- see game.js's checkRoundEnd / app.js's
+// beginIslandCapturePhase). Score is DERIVED from currently-held
+// (garrisoned) islands every round-end (see recomputeScore), never an
+// incremental round-win counter -- an island can later drain (its garrison
+// pulled by Recall, nothing left to refill it at round-end -- see
+// retallyGarrisons) and take its point back with it.
+//
+// This repo's own island roster (Fortress Rock / Palm Cove / Volcanic Peak
+// / Fog Bank / Coral Reef) and its "3 simultaneous neutral islands" board
+// structure are kept as-is -- they're this build's own flavor, not part of
+// the cardboard garrison model being reconciled here (the cardboard rules
+// only specify ONE contested island per round; this repo predates that
+// convention and uses a different, self-consistent island-deck shape).
+// What's been aligned to the cardboard/canon (www/games/sea-hunter-cards)
+// model is the RULES layer: capture gated on round-win + eligible unit,
+// garrison-not-sacrifice, derived scoring, round-end retally.
 const ISLANDS = [
   {
     id: 'fortress_rock',
@@ -159,8 +181,25 @@ function resetIslandActivations(islandState) {
     .forEach(isl => { isl.activated = false; });
 }
 
+// Which unit types can capture/garrison an island -- ships and the one air
+// unit. Matches the canon web build's CAPTURE_ELIGIBLE list exactly (see
+// www/games/sea-hunter-cards/game.js, verified there against the
+// authoritative Godot source) -- Landing Craft, Coastal Artillery, and Mine
+// (the 0-strength/defensive units) cannot capture or garrison an island.
+const CAPTURE_ELIGIBLE = ['battleship', 'cruiser', 'destroyer', 'patrol_ship', 'sea_hunter', 'plane', 'submarine'];
+
+// Does `player` have ANY unit on the field eligible to capture an island
+// with? Used to auto-skip the island-capture opportunity when the round's
+// winner has nothing that qualifies (Mine/Landing Craft/Coastal Artillery
+// survivors only) -- mirrors the canon web build's hasEligibleCapturer().
+function hasEligibleCapturer(state, player) {
+  const front = player === 1 ? state.p1Front : state.p2Front;
+  const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  return [...front, ...reserve].some(c => c && CAPTURE_ELIGIBLE.includes(c.def.id));
+}
+
 // Apply island ability
-function activateIsland(islandState, island, state, player) {
+function activateIsland(islandState, island, state, player, targetIslandId) {
   if (island.activated) return { ok: false, msg: 'Already used this round' };
 
   const myFront = player === 1 ? state.p1Front : state.p2Front;
@@ -180,12 +219,24 @@ function activateIsland(islandState, island, state, player) {
       break;
     }
     case 'recall': {
-      if (!island.garrison) return { ok: false, msg: 'No garrison to recall' };
+      // F5 RULING (owner, 2026-08-14): Recall pulls a unit off ANY island
+      // the player currently holds, not just this island's (Palm Cove's)
+      // own garrison -- matches the canon web build's Maneuver power (see
+      // www/games/sea-hunter-cards/game.js's usePower() maneuver branch).
+      // targetIslandId picks which held island to un-garrison (see app.js's
+      // beginRecallTargeting for the island-picker UI); falls back to the
+      // first held island with a garrison if omitted, same fallback the
+      // canon engine uses. Can target this very island (Palm Cove itself)
+      // if it's the one still garrisoned.
+      const held = player === 1 ? islandState.p1 : islandState.p2;
+      let target = targetIslandId ? held.find(i => i.id === targetIslandId && i.garrison) : null;
+      if (!target) target = held.find(i => i.garrison);
+      if (!target) return { ok: false, msg: 'No garrisoned island to recall a unit from' };
       const empty = myReserve.findIndex(c => c === null);
       if (empty === -1) return { ok: false, msg: 'Reserve is full' };
-      myReserve[empty] = island.garrison;
-      msg = `${island.garrison.def.emoji} ${island.garrison.def.name} recalled from ${island.name}`;
-      island.garrison = null;
+      myReserve[empty] = target.garrison;
+      msg = `${target.garrison.def.emoji} ${target.garrison.def.name} recalled from ${target.name}`;
+      target.garrison = null;
       break;
     }
     case 'strike': {
@@ -220,17 +271,30 @@ function activateIsland(islandState, island, state, player) {
   return { ok: true, msg };
 }
 
-// Capture a neutral island: send a card from reserve there
-function captureIsland(islandState, islandId, state, player) {
+// Capture a neutral island: garrison it with a specific eligible unit from
+// the round winner's Front/Reserve.
+// ISLAND GARRISON RULING (owner, 2026-08-14): capturing is a GARRISON, not
+// a sacrifice -- the unit leaves the field and sits as island.garrison (see
+// retallyGarrisons below for what happens to it later); it is not
+// discarded. Only callable during the ISLAND_CAPTURE opportunity right
+// after winning a round's combat (see game.js's checkRoundEnd / app.js's
+// beginIslandCapturePhase) -- previously this was reachable any turn during
+// ongoing COMBAT with any random Reserve card (no round-win tie, no
+// eligibility check), which didn't match the cardboard rule ("win that
+// round's combat, THEN place a qualifying [ship/plane] unit... to
+// capture").
+function captureIsland(islandState, islandId, state, player, slot, zone) {
   const idx = islandState.neutral.findIndex(i => i.id === islandId);
   if (idx === -1) return { ok: false, msg: 'Island not neutral' };
 
-  const myReserve = player === 1 ? state.p1Reserve : state.p2Reserve;
-  const card = myReserve.find(Boolean);
-  if (!card) return { ok: false, msg: 'Need a Reserve card to capture island' };
+  const front = player === 1 ? state.p1Front : state.p2Front;
+  const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  const zoneArr = zone === 'front' ? front : reserve;
+  const card = zoneArr ? zoneArr[slot] : null;
+  if (!card) return { ok: false, msg: 'No card in that slot' };
+  if (!CAPTURE_ELIGIBLE.includes(card.def.id)) return { ok: false, msg: 'Only ships or planes can capture an island' };
 
-  const ci = myReserve.indexOf(card);
-  myReserve[ci] = null;
+  zoneArr[slot] = null;
   const island = { ...islandState.neutral[idx], garrison: card, activated: false };
   islandState.neutral.splice(idx, 1);
   if (player === 1) islandState.p1.push(island);
@@ -239,11 +303,77 @@ function captureIsland(islandState, islandId, state, player) {
   return { ok: true, msg: `${island.name} captured! ${card.def.emoji} ${card.def.name} garrisoned.` };
 }
 
+// ISLAND RULING refinement 2 (owner, 2026-08-14): re-evaluate every island
+// `player` currently holds, independent of who won/lost/drew this round. A
+// still-garrisoned island is left untouched (the common case). An island
+// with an EMPTY garrison slot either auto-refills from another qualifying
+// Front/Reserve unit (island kept, no click needed) or drains -- returned
+// to the neutral pool (recapturable later by either side), its point lost
+// with it -- if the player has nothing left to place. Mirrors the canon web
+// build's retallyGarrisons() in game.js. Returns a player-facing log string
+// (may be empty).
+function retallyGarrisons(islandState, state, player) {
+  const held = player === 1 ? islandState.p1 : islandState.p2;
+  const front = player === 1 ? state.p1Front : state.p2Front;
+  const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
+  const who = player === 1 ? 'Your' : "The AI's";
+  let msg = '';
+
+  for (let i = held.length - 1; i >= 0; i--) {
+    const island = held[i];
+    if (island.garrison) continue; // still garrisoned -- nothing to do
+
+    let refilled = false;
+    for (const list of [front, reserve]) {
+      for (let s = 0; s < list.length; s++) {
+        const c = list[s];
+        if (c && CAPTURE_ELIGIBLE.includes(c.def.id)) {
+          list[s] = null;
+          island.garrison = c;
+          refilled = true;
+          break;
+        }
+      }
+      if (refilled) break;
+    }
+
+    if (refilled) {
+      msg += `${who} ${island.name} garrison is resupplied -- island held!\n`;
+    } else {
+      held.splice(i, 1);
+      islandState.neutral.push({ ...island, garrison: null, activated: false });
+      msg += `${who} ${island.name} garrison is empty -- the island drains!\n`;
+    }
+  }
+  return msg;
+}
+
+// Score = number of islands each player currently HOLDS (garrisoned) -- see
+// ISLAND GARRISON RULING. Always derived fresh from islandState.p1/p2
+// (never an incremental round-win counter, unlike this file's original
+// design) so capture, auto-refill, and drain can never drift out of sync
+// with the displayed score. This roster has no Two-Island-style
+// double-value island, so every held island is worth a flat 1 point.
+function recomputeScore(state, islandState) {
+  state.score[0] = islandState.p1.length;
+  state.score[1] = islandState.p2.length;
+}
+
 // ── game.js ──
 // Game state machine
 
-const PHASE = { PREP: 'PREP', COMBAT: 'COMBAT', ROUND_END: 'ROUND_END', GAME_OVER: 'GAME_OVER' };
-const MAX_ROUNDS = 10;
+// ISLAND_CAPTURE: paused between "a round just ended with a winner" and
+// "the board wipes/redeals for the next round" -- see checkRoundEnd() /
+// finishRound() below and app.js's beginIslandCapturePhase(). Mirrors the
+// canon web build's PHASE.ISLAND_CAPTURE (www/games/sea-hunter-cards).
+const PHASE = { PREP: 'PREP', COMBAT: 'COMBAT', ISLAND_CAPTURE: 'ISLAND_CAPTURE', ROUND_END: 'ROUND_END', GAME_OVER: 'GAME_OVER' };
+const MAX_ROUNDS = 10; // fallback cap -- see POINTS_TO_WIN below, the real win condition
+// WIN CONDITION -- ISLAND GARRISON RULING (owner, 2026-08-14): first to
+// hold POINTS_TO_WIN islands wins immediately (state.score is derived from
+// islandState.p1/p2.length -- see islands.js's recomputeScore(), called
+// from app.js right before finishRound() checks this). MAX_ROUNDS above is
+// only a fallback tiebreak in case neither side reaches it.
+const POINTS_TO_WIN = 3;
 const ZONE_SIZE = 4;
 
 function shuffle(arr) {
@@ -263,6 +393,7 @@ function createGameState(difficulty = 2) {
     phase: PHASE.PREP, difficulty, round: 1,
     turnOwner: Math.random() > 0.5 ? 1 : 2,
     score: [0, 0],
+    roundWinner: 0, // 0 none/draw, 1 player, 2 AI -- set by checkRoundEnd(), read by app.js's beginIslandCapturePhase()
     p1Hand: p1Ids.map(id => ({ ...createCard(id), faceUp: true })),
     p2Hand: p2Ids.map(id => createCard(id)),
     p1Front: new Array(ZONE_SIZE).fill(null),
@@ -447,14 +578,48 @@ function checkRoundEnd(state) {
   if (p1Alive && p2Alive) return null;
 
   let msg;
-  if (!p1Alive && !p2Alive) { msg = 'Draw this round!'; }
-  else if (!p2Alive) { state.score[0]++; msg = `You won round ${state.round}!`; }
-  else { state.score[1]++; msg = `AI won round ${state.round}.`; }
+  if (!p1Alive && !p2Alive) {
+    state.roundWinner = 0;
+    msg = 'Draw this round!';
+  } else if (!p2Alive) {
+    state.roundWinner = 1;
+    msg = `You won round ${state.round}!`;
+  } else {
+    state.roundWinner = 2;
+    msg = `AI won round ${state.round}.`;
+  }
 
+  // ISLAND GARRISON RULING (owner, 2026-08-14): capturing an island is
+  // gated on winning THIS round's combat, not a free action on any turn
+  // (see islands.js's captureIsland) -- so a round with an actual winner
+  // pauses in ISLAND_CAPTURE instead of immediately wiping the board and
+  // redealing. app.js's handleRoundEnd()/beginIslandCapturePhase() resumes
+  // into finishRound() below once that capture opportunity resolves (or
+  // auto-skips -- e.g. the winner has no eligible ship/plane survivor); a
+  // draw has no capture opportunity at all (roundWinner === 0), so it goes
+  // straight to finishRound().
+  if (state.roundWinner !== 0) {
+    state.phase = PHASE.ISLAND_CAPTURE;
+    return { msg, gameOver: false, roundWinner: state.roundWinner, awaitingCapture: true };
+  }
+
+  return { msg, gameOver: false, roundWinner: 0, awaitingCapture: false };
+}
+
+// Finalizes a round: advances the round counter, checks the win condition
+// (first to POINTS_TO_WIN islands, MAX_ROUNDS as a fallback cap) and either
+// ends the game or wipes the board + redeals for the next PREP phase. Split
+// out of checkRoundEnd() so app.js can run the island-capture step (and the
+// retally/recomputeScore bookkeeping that follows it -- see islands.js) in
+// between "who won this round" and "start the next one." Caller must have
+// already resolved capture/retally/recomputeScore before calling this --
+// it only reads state.score, never touches islands itself (keeps this
+// file's pre-existing island-agnostic separation from islands.js).
+function finishRound(state) {
   state.round++;
-  if (state.round > MAX_ROUNDS) {
+  if (state.round > MAX_ROUNDS || state.score[0] >= POINTS_TO_WIN || state.score[1] >= POINTS_TO_WIN) {
     state.phase = PHASE.GAME_OVER;
-    return { msg, gameOver: true };
+    return { gameOver: true };
   }
 
   state.phase = PHASE.PREP;
@@ -473,12 +638,11 @@ function checkRoundEnd(state) {
   state.p1Hand = p1Ids.map(id => ({ ...createCard(id), faceUp: true }));
   state.p2Hand = p2Ids.map(id => createCard(id));
 
-  return { msg, gameOver: false };
+  return { gameOver: false };
 }
 
 // ── ai.js ──
 // AI opponent — mirrors src/games/sea_hunter/ai.py
-
 
 function aiTurn(state) {
   if (state.turnOwner !== 2) return [];
@@ -564,7 +728,6 @@ function aiTurn(state) {
 // ── ui.js ──
 // UI rendering — DOM, card elements, animations
 
-
 const $ = id => document.getElementById(id);
 
 const DOM = {
@@ -595,8 +758,10 @@ function setStatus(msg) { DOM.statusText.textContent = msg; }
 
 function updateHUD(state) {
   DOM.roundInfo.textContent = `Round ${state.round}/10`;
-  DOM.scoreInfo.textContent = `${state.score[0]} : ${state.score[1]}`;
-  DOM.phaseLabel.textContent = state.phase === PHASE.PREP ? 'PREPARATION' : state.phase === PHASE.COMBAT ? 'COMBAT' : state.phase;
+  // Score = islands currently held (see islands.js's recomputeScore) --
+  // first to POINTS_TO_WIN wins; MAX_ROUNDS is only a fallback tiebreak.
+  DOM.scoreInfo.textContent = `${state.score[0]} : ${state.score[1]} (first to ${POINTS_TO_WIN})`;
+  DOM.phaseLabel.textContent = state.phase === PHASE.PREP ? 'PREPARATION' : state.phase === PHASE.COMBAT ? 'COMBAT' : state.phase === PHASE.ISLAND_CAPTURE ? 'ISLAND CAPTURE' : state.phase;
   DOM.phaseLabel.style.color = state.phase === PHASE.COMBAT ? '#ff5252' : '#ffd54f';
 }
 
@@ -831,14 +996,14 @@ const UI = { DOM, showScreen, setStatus, updateHUD, createCardEl,
 // ── app.js ──
 // App entry point — wires everything together
 
-
-
 let state = null;
 let islandState = null;
 let selectedAttacker = null;
 let difficulty = 2;
 let combatLocked = false;
 let openIsland = null; // currently open in panel
+let selectedCaptureUnit = null; // { slot, zone, card } -- picked during PHASE.ISLAND_CAPTURE, see selectCaptureUnit()
+let recallTargeting = null; // the Recall (Palm Cove) island itself, while picking which held island to un-garrison -- see beginRecallTargeting()
 
 // ── Boot ─────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -891,6 +1056,8 @@ function startGame() {
   selectedAttacker = null;
   combatLocked = false;
   openIsland = null;
+  selectedCaptureUnit = null;
+  recallTargeting = null;
   UI.hideGameOver();
   UI.showScreen('game');
   UI.DOM.combatLog.classList.add('hidden');
@@ -939,7 +1106,12 @@ function openIslandPanel(island, owner) {
   openIsland = { island, owner };
   const panel = document.getElementById('island-panel');
   const canActivate = owner === 'p1' && !island.activated && state && state.phase === PHASE.COMBAT && state.turnOwner === 1 && !combatLocked;
-  const isCaptureable = owner === 'neutral' && state && state.phase === PHASE.COMBAT && state.turnOwner === 1 && !combatLocked;
+  // ISLAND GARRISON RULING (owner, 2026-08-14): capture is only offered
+  // during the round winner's ISLAND_CAPTURE opportunity (see game.js's
+  // checkRoundEnd/finishRound + beginIslandCapturePhase below) -- it used
+  // to be a free action any turn during ongoing combat, with no tie to
+  // actually winning that round.
+  const isCaptureable = owner === 'neutral' && state && state.phase === PHASE.ISLAND_CAPTURE && state.roundWinner === 1;
 
   document.getElementById('island-panel-svg').innerHTML = islandSVG(island, 'large');
   document.getElementById('island-panel-name').textContent = island.name;
@@ -951,7 +1123,11 @@ function openIslandPanel(island, owner) {
   const btn = document.getElementById('island-activate-btn');
   if (isCaptureable) {
     btn.textContent = 'Capture Island';
-    btn.disabled = !state.p1Reserve.some(Boolean);
+    // Requires a ship/plane already picked from Front/Reserve (see
+    // selectCaptureUnit) -- capturing a specific neutral island, with a
+    // specific unit, is now a deliberate two-step pick instead of always
+    // auto-grabbing "any Reserve card."
+    btn.disabled = !selectedCaptureUnit;
   } else {
     btn.textContent = island.activated ? 'Used this round' : 'Activate';
     btn.disabled = !canActivate;
@@ -969,15 +1145,33 @@ function onIslandActivate() {
   if (!openIsland || !state) return;
   const { island, owner } = openIsland;
 
-  let result;
   if (owner === 'neutral') {
-    result = captureIsland(islandState, island.id, state, 1);
-  } else if (owner === 'p1') {
-    result = activateIsland(islandState, island, state, 1);
-  } else {
+    if (state.phase !== PHASE.ISLAND_CAPTURE || state.roundWinner !== 1) return;
+    if (!selectedCaptureUnit) { UI.setStatus('Pick a ship or plane from your Front/Reserve first.'); return; }
+    const result = captureIsland(islandState, island.id, state, 1, selectedCaptureUnit.slot, selectedCaptureUnit.zone);
+    if (!result.ok) { UI.setStatus(result.msg); return; }
+    selectedCaptureUnit = null;
+    UI.clearAllHighlights();
+    UI.addLogEntry(result.msg, 'ability');
+    UI.setStatus(result.msg);
+    closeIslandPanel();
+    finishRoundFlow();
     return;
   }
 
+  if (owner !== 'p1') return;
+
+  // Recall (Palm Cove) targets a unit garrisoned on ANY held island, not
+  // just this one's own -- see islands.js's F5 RULING comment. Needs a
+  // target pick first when more than one held island could supply it (or
+  // even just to confirm which one) -- see beginRecallTargeting below,
+  // which mirrors the canon web build's Maneuver island-picker.
+  if (island.abilityType === 'recall' && !island.activated) {
+    beginRecallTargeting(island);
+    return;
+  }
+
+  const result = activateIsland(islandState, island, state, 1);
   if (!result.ok) { UI.setStatus(result.msg); return; }
 
   UI.addLogEntry(result.msg, 'ability');
@@ -987,7 +1181,38 @@ function onIslandActivate() {
   renderIslands();
 
   // Using island ability ends the turn
-  if (owner === 'p1' && !combatLocked) {
+  if (!combatLocked) {
+    state.turnOwner = 2;
+    setTimeout(() => doAiTurn(), 800);
+  }
+}
+
+// Recall (Palm Cove) targeting -- see onIslandActivate's recall branch.
+// Highlights the player's held+garrisoned islands (in #player-island-slots,
+// via renderIslands()'s recallTargeting branch) as pickable targets;
+// clicking one resolves Recall against it. Same shape as the canon web
+// build's Maneuver island-picker (www/games/sea-hunter-cards/app.js).
+function beginRecallTargeting(recallIsland) {
+  const eligible = islandState.p1.filter(i => i.garrison);
+  if (!eligible.length) { UI.setStatus('Recall: no garrisoned island to pull a unit from.'); return; }
+  recallTargeting = recallIsland;
+  closeIslandPanel();
+  UI.setStatus(eligible.length > 1
+    ? 'Recall: pick which of your held islands to un-garrison.'
+    : 'Recall: confirm the held island to un-garrison.');
+  renderIslands();
+}
+
+function resolveRecallTarget(targetIsland) {
+  const recallIsland = recallTargeting;
+  recallTargeting = null;
+  const result = activateIsland(islandState, recallIsland, state, 1, targetIsland.id);
+  if (!result.ok) { UI.setStatus(result.msg); renderIslands(); return; }
+  UI.addLogEntry(result.msg, 'ability');
+  UI.setStatus(result.msg);
+  renderAll();
+  renderIslands();
+  if (!combatLocked) {
     state.turnOwner = 2;
     setTimeout(() => doAiTurn(), 800);
   }
@@ -1012,10 +1237,23 @@ function renderIslands() {
         dot.title = `Garrison: ${isl.garrison.def.name}`;
         card.appendChild(dot);
       }
-      card.addEventListener('click', () => {
-        if (openIsland && openIsland.island === isl) { closeIslandPanel(); return; }
-        openIslandPanel(isl, owner);
-      });
+      // Recall targeting (see beginRecallTargeting): while active, clicking
+      // an eligible (held + garrisoned) player island picks it as the
+      // un-garrison target instead of opening its normal panel; everything
+      // else goes inert for the duration of the pick.
+      if (recallTargeting && owner === 'p1') {
+        if (isl.garrison) {
+          card.classList.add('target-highlight');
+          card.addEventListener('click', () => resolveRecallTarget(isl));
+        } else {
+          card.style.opacity = '0.4';
+        }
+      } else {
+        card.addEventListener('click', () => {
+          if (openIsland && openIsland.island === isl) { closeIslandPanel(); return; }
+          openIslandPanel(isl, owner);
+        });
+      }
       el.appendChild(card);
     });
     if (!islands.length) el.innerHTML = '<div style="opacity:0.3;font-size:0.6rem;padding:4px">–</div>';
@@ -1027,8 +1265,13 @@ function renderIslands() {
 }
 
 // ── Combat Phase ─────────────────────────────────────────────────
+// Picks the unit to garrison a neutral island with (see selectCaptureUnit
+// below) -- reachable from either zone's click handler while the round
+// winner's ISLAND_CAPTURE opportunity is open.
 function onPlayerCardClick(slot, card, el) {
-  if (!state || state.phase !== PHASE.COMBAT || state.turnOwner !== 1 || combatLocked) return;
+  if (!state) return;
+  if (state.phase === PHASE.ISLAND_CAPTURE) { selectCaptureUnit(slot, 'front', card, el); return; }
+  if (state.phase !== PHASE.COMBAT || state.turnOwner !== 1 || combatLocked) return;
   if (card.def.id === 'mine') { UI.setStatus('Mine cannot attack — passive defense only!'); return; }
 
   UI.clearAllHighlights();
@@ -1051,8 +1294,10 @@ function onPlayerCardClick(slot, card, el) {
   }
 }
 
-function onPlayerReserveClick(slot, card) {
-  if (!state || state.phase !== PHASE.COMBAT || state.turnOwner !== 1 || combatLocked) return;
+function onPlayerReserveClick(slot, card, el) {
+  if (!state) return;
+  if (state.phase === PHASE.ISLAND_CAPTURE) { selectCaptureUnit(slot, 'reserve', card, el); return; }
+  if (state.phase !== PHASE.COMBAT || state.turnOwner !== 1 || combatLocked) return;
   if (!state.p1Front.includes(null)) { UI.setStatus('Front is full!'); return; }
 
   const res = moveReserveToFront(state, slot, 1);
@@ -1064,6 +1309,30 @@ function onPlayerReserveClick(slot, card) {
   const end = checkRoundEnd(state);
   if (end) { handleRoundEnd(end); return; }
   if (state.turnOwner === 2) setTimeout(() => doAiTurn(), 800);
+}
+
+// Selects (or deselects) a Front/Reserve card as the unit to garrison a
+// neutral island with during the round winner's ISLAND_CAPTURE opportunity
+// -- see onPlayerCardClick/onPlayerReserveClick above and onIslandActivate's
+// 'neutral' branch, which reads selectedCaptureUnit once a neutral island's
+// Capture button is clicked.
+function selectCaptureUnit(slot, zone, card, el) {
+  if (!state || state.roundWinner !== 1) return;
+  if (!CAPTURE_ELIGIBLE.includes(card.def.id)) {
+    UI.setStatus(`${card.def.emoji} ${card.def.name} cannot capture an island — only ships or planes can.`);
+    return;
+  }
+  UI.clearAllHighlights();
+  if (selectedCaptureUnit && selectedCaptureUnit.slot === slot && selectedCaptureUnit.zone === zone) {
+    selectedCaptureUnit = null;
+    UI.setStatus('Unit deselected.');
+    if (openIsland) openIslandPanel(openIsland.island, openIsland.owner); // refresh the Capture button's disabled state
+    return;
+  }
+  selectedCaptureUnit = { slot, zone, card };
+  el?.querySelector('.card')?.classList.add('selected');
+  UI.setStatus(`${card.def.emoji} ${card.def.name} selected — pick a neutral island to capture it with.`);
+  if (openIsland) openIslandPanel(openIsland.island, openIsland.owner); // refresh the Capture button's disabled state
 }
 
 async function onOppCardClick(slot, card, slotEl) {
@@ -1166,14 +1435,85 @@ async function doAiTurn() {
   if (state.turnOwner === 1) UI.setStatus('Your turn! Click a card or activate an island.');
 }
 
+// ISLAND GARRISON RULING (owner, 2026-08-14): a round with an actual winner
+// (not a draw) now pauses for an island-capture opportunity (state.phase
+// is already PHASE.ISLAND_CAPTURE -- see game.js's checkRoundEnd) instead
+// of finishing immediately -- see beginIslandCapturePhase/finishRoundFlow
+// below. A draw has no capture opportunity and finishes right away.
 function handleRoundEnd(end) {
   UI.addLogEntry(end.msg, 'round');
-  // Reset island activations for next round
+
+  if (end.awaitingCapture) {
+    beginIslandCapturePhase(end.roundWinner);
+    return;
+  }
+
+  finishRoundFlow();
+}
+
+// Entered right after a (non-draw) round is won -- the winner gets one
+// chance to garrison a neutral island with an eligible Front/Reserve
+// survivor before the round actually finishes (board wipe + redeal). AI
+// resolves this automatically; the player picks a unit (selectCaptureUnit)
+// then a neutral island (onIslandActivate's 'neutral' branch, via the
+// existing island-panel click flow) -- see islands.js's captureIsland.
+function beginIslandCapturePhase(roundWinner) {
+  renderAll();
+  renderIslands();
+
+  if (roundWinner === 2) {
+    aiCaptureIsland();
+    return;
+  }
+
+  if (!hasEligibleCapturer(state, 1)) {
+    UI.setStatus('You win the round, but nothing left to garrison an island with — it stays uncaptured.');
+    finishRoundFlow();
+    return;
+  }
+  selectedCaptureUnit = null;
+  UI.setStatus('You win the round! Pick a ship or plane, then click a neutral island to capture it.');
+}
+
+// Auto-resolves the AI's island-capture opportunity (no UI on that side):
+// first eligible Front-then-Reserve unit, first available neutral island --
+// mirrors the canon web build's executeIslandCapture() winner===2 branch.
+function aiCaptureIsland() {
+  if (!hasEligibleCapturer(state, 2) || !islandState.neutral.length) { finishRoundFlow(); return; }
+
+  let slot = -1, zone = null;
+  for (const [list, z] of [[state.p2Front, 'front'], [state.p2Reserve, 'reserve']]) {
+    const i = list.findIndex(c => c && CAPTURE_ELIGIBLE.includes(c.def.id));
+    if (i !== -1) { slot = i; zone = z; break; }
+  }
+  if (slot === -1) { finishRoundFlow(); return; }
+
+  const res = captureIsland(islandState, islandState.neutral[0].id, state, 2, slot, zone);
+  if (res.ok) UI.addLogEntry(`AI: ${res.msg}`, 'ability');
+  finishRoundFlow();
+}
+
+// Finalizes a round once its island-capture opportunity has resolved (or
+// been skipped/auto-skipped, or there was none -- a draw): re-tallies both
+// players' held-island garrisons (independent of who won/lost/drew this
+// particular round -- see islands.js's retallyGarrisons/ISLAND RULING
+// refinement 2), recomputes score from islands held, then hands off to
+// game.js's finishRound() for the board wipe/redeal/game-over check.
+function finishRoundFlow() {
+  const retallyMsg = retallyGarrisons(islandState, state, 1) + retallyGarrisons(islandState, state, 2);
+  retallyMsg.split('\n').filter(Boolean).forEach(line => UI.addLogEntry(line, 'ability'));
+  recomputeScore(state, islandState);
+  // Reset island activations for next round -- unchanged pre-existing
+  // behavior (powers are reusable every round in this build, unlike the
+  // canon web build's one-time-ever powers; kept as this repo's own
+  // pre-existing design, not part of the garrison-model reconciliation).
   if (islandState) resetIslandActivations(islandState);
   renderIslands();
 
-  if (end.gameOver) { setTimeout(() => UI.showGameOver(state), 800); return; }
-  UI.setStatus(end.msg + ' — Place cards for next round!');
+  const fin = finishRound(state);
+  if (fin.gameOver) { setTimeout(() => UI.showGameOver(state), 800); return; }
+
+  UI.setStatus('Place cards for next round!');
   UI.DOM.btnAuto.style.display = '';
   UI.DOM.btnReady.style.display = '';
   UI.DOM.btnReady.disabled = true;
@@ -1190,10 +1530,10 @@ function renderAll() {
     state.phase === PHASE.COMBAT ? onOppCardClick : null);
 
   UI.renderZone(UI.DOM.playerFront, state.p1Front, true,
-    state.phase === PHASE.COMBAT ? onPlayerCardClick :
+    state.phase === PHASE.COMBAT || state.phase === PHASE.ISLAND_CAPTURE ? onPlayerCardClick :
     state.phase === PHASE.PREP ? onPrepCardClick : null);
   UI.renderZone(UI.DOM.playerReserve, state.p1Reserve, true,
-    state.phase === PHASE.COMBAT ? onPlayerReserveClick :
+    state.phase === PHASE.COMBAT || state.phase === PHASE.ISLAND_CAPTURE ? onPlayerReserveClick :
     state.phase === PHASE.PREP ? onPrepCardClick : null);
 
   UI.renderHand(state.p1Hand, state.phase === PHASE.PREP ? onHandCardClick : null);
@@ -1213,5 +1553,4 @@ function onPrepCardClick(slot, card) {
     UI.setStatus(`${card.def.emoji} ${card.def.name} returned to hand`);
   }
 }
-
 })();
