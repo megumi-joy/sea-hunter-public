@@ -1,8 +1,18 @@
 // Game state machine
 import { CARDS, DECK_IDS, getResult } from './cards.js';
 
-export const PHASE = { PREP: 'PREP', COMBAT: 'COMBAT', ROUND_END: 'ROUND_END', GAME_OVER: 'GAME_OVER' };
-export const MAX_ROUNDS = 10;
+// ISLAND_CAPTURE: paused between "a round just ended with a winner" and
+// "the board wipes/redeals for the next round" -- see checkRoundEnd() /
+// finishRound() below and app.js's beginIslandCapturePhase(). Mirrors the
+// canon web build's PHASE.ISLAND_CAPTURE (www/games/sea-hunter-cards).
+export const PHASE = { PREP: 'PREP', COMBAT: 'COMBAT', ISLAND_CAPTURE: 'ISLAND_CAPTURE', ROUND_END: 'ROUND_END', GAME_OVER: 'GAME_OVER' };
+export const MAX_ROUNDS = 10; // fallback cap -- see POINTS_TO_WIN below, the real win condition
+// WIN CONDITION -- ISLAND GARRISON RULING (owner, 2026-08-14): first to
+// hold POINTS_TO_WIN islands wins immediately (state.score is derived from
+// islandState.p1/p2.length -- see islands.js's recomputeScore(), called
+// from app.js right before finishRound() checks this). MAX_ROUNDS above is
+// only a fallback tiebreak in case neither side reaches it.
+export const POINTS_TO_WIN = 3;
 export const ZONE_SIZE = 4;
 
 function shuffle(arr) {
@@ -22,6 +32,7 @@ export function createGameState(difficulty = 2) {
     phase: PHASE.PREP, difficulty, round: 1,
     turnOwner: Math.random() > 0.5 ? 1 : 2,
     score: [0, 0],
+    roundWinner: 0, // 0 none/draw, 1 player, 2 AI -- set by checkRoundEnd(), read by app.js's beginIslandCapturePhase()
     p1Hand: p1Ids.map(id => ({ ...createCard(id), faceUp: true })),
     p2Hand: p2Ids.map(id => createCard(id)),
     p1Front: new Array(ZONE_SIZE).fill(null),
@@ -206,14 +217,48 @@ export function checkRoundEnd(state) {
   if (p1Alive && p2Alive) return null;
 
   let msg;
-  if (!p1Alive && !p2Alive) { msg = 'Draw this round!'; }
-  else if (!p2Alive) { state.score[0]++; msg = `You won round ${state.round}!`; }
-  else { state.score[1]++; msg = `AI won round ${state.round}.`; }
+  if (!p1Alive && !p2Alive) {
+    state.roundWinner = 0;
+    msg = 'Draw this round!';
+  } else if (!p2Alive) {
+    state.roundWinner = 1;
+    msg = `You won round ${state.round}!`;
+  } else {
+    state.roundWinner = 2;
+    msg = `AI won round ${state.round}.`;
+  }
 
+  // ISLAND GARRISON RULING (owner, 2026-08-14): capturing an island is
+  // gated on winning THIS round's combat, not a free action on any turn
+  // (see islands.js's captureIsland) -- so a round with an actual winner
+  // pauses in ISLAND_CAPTURE instead of immediately wiping the board and
+  // redealing. app.js's handleRoundEnd()/beginIslandCapturePhase() resumes
+  // into finishRound() below once that capture opportunity resolves (or
+  // auto-skips -- e.g. the winner has no eligible ship/plane survivor); a
+  // draw has no capture opportunity at all (roundWinner === 0), so it goes
+  // straight to finishRound().
+  if (state.roundWinner !== 0) {
+    state.phase = PHASE.ISLAND_CAPTURE;
+    return { msg, gameOver: false, roundWinner: state.roundWinner, awaitingCapture: true };
+  }
+
+  return { msg, gameOver: false, roundWinner: 0, awaitingCapture: false };
+}
+
+// Finalizes a round: advances the round counter, checks the win condition
+// (first to POINTS_TO_WIN islands, MAX_ROUNDS as a fallback cap) and either
+// ends the game or wipes the board + redeals for the next PREP phase. Split
+// out of checkRoundEnd() so app.js can run the island-capture step (and the
+// retally/recomputeScore bookkeeping that follows it -- see islands.js) in
+// between "who won this round" and "start the next one." Caller must have
+// already resolved capture/retally/recomputeScore before calling this --
+// it only reads state.score, never touches islands itself (keeps this
+// file's pre-existing island-agnostic separation from islands.js).
+export function finishRound(state) {
   state.round++;
-  if (state.round > MAX_ROUNDS) {
+  if (state.round > MAX_ROUNDS || state.score[0] >= POINTS_TO_WIN || state.score[1] >= POINTS_TO_WIN) {
     state.phase = PHASE.GAME_OVER;
-    return { msg, gameOver: true };
+    return { gameOver: true };
   }
 
   state.phase = PHASE.PREP;
@@ -232,5 +277,5 @@ export function checkRoundEnd(state) {
   state.p1Hand = p1Ids.map(id => ({ ...createCard(id), faceUp: true }));
   state.p2Hand = p2Ids.map(id => createCard(id));
 
-  return { msg, gameOver: false };
+  return { gameOver: false };
 }
