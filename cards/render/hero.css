@@ -109,6 +109,17 @@
 .hero-capture-theirs { color: var(--danger-hi, #ff6b5d); }
 .hero-ability { margin-top: 5px; color: #d3e2ee; }
 .hero-ability-name { font-weight: 900; color: #ffffff; }
+.hero-matchups { margin-top: 6px; display: grid; gap: 3px; text-align: left; }
+.hero-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; font-size: 11px; line-height: 1.2; }
+.hero-row-label { min-width: 62px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; font-size: 10px; }
+.hero-row-win .hero-row-label { color: #8ff0a4; }
+.hero-row-draw .hero-row-label { color: #f4c24f; }
+.hero-row-loss .hero-row-label { color: var(--danger-hi, #ff6b5d); }
+.hero-chip { padding: 1px 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); color: #e6f0f8; font-weight: 700; white-space: nowrap; }
+.hero-row-win .hero-chip { background: rgba(64, 200, 110, 0.22); }
+.hero-row-draw .hero-chip { background: rgba(244, 194, 79, 0.2); }
+.hero-row-loss .hero-chip { background: rgba(255, 107, 93, 0.22); }
+.hero-chip-none { opacity: 0.55; font-weight: 500; }
 .hero-hint { margin-top: 6px; font-size: 11px; color: rgba(206, 228, 246, 0.6); }
 
 /* Entrance: the card rises and settles, the scrim fades. Transform and

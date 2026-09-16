@@ -28,7 +28,7 @@
 // render/fx.js gives: a headless capture advances timers but not the
 // animation clock, and a hero left up forever would hide the next shot.
 
-import { CARDS } from '../cards.js';
+import { CARDS, CARD_ORDER, getResult } from '../cards.js';
 import { getIslandDef } from '../islands.js';
 import { buildCardEl } from './cards.js';
 
@@ -123,6 +123,7 @@ function open(media, info, opts = {}) {
     + (info.meta ? `<div class="hero-meta">${info.meta}</div>` : '')
     + (info.ability ? `<div class="hero-ability"><span class="hero-ability-name">${esc(info.ability)}</span>${info.desc ? ` ${esc(info.desc)}` : ''}</div>`
       : info.desc ? `<div class="hero-ability">${esc(info.desc)}</div>` : '')
+    + (info.extra || '')
     + (opts.interactive ? '<div class="hero-hint">Tap to close</div>' : '');
   frame.appendChild(panel);
   wrap.appendChild(frame);
@@ -140,12 +141,33 @@ function open(media, info, opts = {}) {
   return wrap;
 }
 
+// Who this card sinks, who it trades with, and who sinks it -- the three
+// icon rows of the cardboard card, as text. Owner 2026-09-16: pressing a
+// card must say whom to fear and whom to scare. Read from the impact
+// table, so the rows can never disagree with combat.
+function matchupRows(def) {
+  const rows = { WIN: [], DRAW: [], LOSS: [] };
+  for (const id of CARD_ORDER) {
+    const r = getResult(def.id, id);
+    if (rows[r]) rows[r].push(CARDS[id].name);
+  }
+  const chips = (list) => list.length
+    ? list.map((n) => `<span class="hero-chip">${esc(n)}</span>`).join('')
+    : '<span class="hero-chip hero-chip-none">nobody</span>';
+  return `<div class="hero-matchups">`
+    + `<div class="hero-row hero-row-win"><span class="hero-row-label">Sinks</span>${chips(rows.WIN)}</div>`
+    + `<div class="hero-row hero-row-draw"><span class="hero-row-label">Both sink</span>${chips(rows.DRAW)}</div>`
+    + `<div class="hero-row hero-row-loss"><span class="hero-row-label">Sunk by</span>${chips(rows.LOSS)}</div>`
+    + `</div>`;
+}
+
 function unitInfo(def) {
   return {
     title: def.name,
     meta: `<span class="hero-strength">Strength ${esc(def.strength)}</span>`,
-    ability: def.ability ? def.ability.name + ':' : '',
-    desc: def.ability ? def.ability.desc : '',
+    ability: '',
+    desc: '',
+    extra: matchupRows(def),
   };
 }
 
