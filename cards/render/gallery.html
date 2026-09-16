@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sea Hunter -- card render gallery</title>
+<!-- Loads the REAL page cascade (style.css first, then cards.css) so this
+     gallery exercises the same specificity and breakpoints the match page
+     does. A standalone stylesheet here would pass while the game broke. -->
+<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="./cards.css">
+<!-- P11: the island rows below need islands.css too, and it must come after
+     style.css for the same specificity reason cards.css does. -->
+<link rel="stylesheet" href="./islands.css">
+<style>
+  body { padding: 8px; background: #0b1622; }
+  .g-head { color: #cfe3f2; font: 700 13px/1.4 system-ui, sans-serif; margin: 14px 0 6px; }
+  .g-sub { color: #7f9bb2; font: 400 11px/1.4 system-ui, sans-serif; margin: 2px 0 6px; }
+  .g-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+  .g-item { text-align: center; }
+  .g-cap { color: #7f9bb2; font: 400 9px/1.3 system-ui, sans-serif; margin-top: 3px; }
+  table.g-sizes { color: #7f9bb2; font: 400 10px/1.4 monospace; border-collapse: collapse; }
+  table.g-sizes td { padding: 1px 8px 1px 0; }
+  /* islands.css sizes .ic-card only under #game-screen (the board decides
+     how big an island is), so the gallery has to state a size itself or
+     every island collapses to a zero-width aspect-ratio box. These are the
+     two sizes the board actually uses at 412px. */
+  .g-item > .ic-card { height: auto; }
+  .g-item > .ic-card.ic-active { width: 116px; }
+  .g-item > .ic-card.ic-chip { width: 52px; }
+  .g-item > .ic-card .ic-garrison { font-size: 10px; min-width: 12px; padding: 0 3px; }
+  .g-item > .ic-card .ic-name { font-size: 8px; }
+  .g-item > .ic-card .ic-band { padding: 1px 2px; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<script type="module">
+import { CARDS, DECK_IDS, CARD_ORDER } from '../cards.js';
+import { ISLANDS } from '../islands.js';
+import { ART, ART_BACK } from './art.js';
+import { buildCardEl, artUrl, ART_FILES } from './cards.js';
+import { buildIslandEl } from './islands.js';
+
+const out = document.getElementById('out');
+
+function head(t, sub) {
+  const h = document.createElement('div');
+  h.className = 'g-head';
+  h.textContent = t;
+  out.appendChild(h);
+  if (sub) {
+    const s = document.createElement('div');
+    s.className = 'g-sub';
+    s.textContent = sub;
+    out.appendChild(s);
+  }
+}
+
+function row(slotW) {
+  const r = document.createElement('div');
+  r.className = 'g-row';
+  r.style.setProperty('--slot-w', slotW + 'px');
+  out.appendChild(r);
+  return r;
+}
+
+function item(parent, el, caption) {
+  const wrap = document.createElement('div');
+  wrap.className = 'g-item';
+  wrap.appendChild(el);
+  const c = document.createElement('div');
+  c.className = 'g-cap';
+  c.textContent = caption;
+  wrap.appendChild(c);
+  parent.appendChild(wrap);
+}
+
+// All 14 dealt cards (DECK_IDS, duplicates included) face up, plus one back.
+for (const w of [64, 84, 120]) {
+  head('Deck at --slot-w ' + w + 'px -- 14 dealt cards + 1 face down');
+  const r = row(w);
+  DECK_IDS.forEach(id => item(r, buildCardEl(CARDS[id], true), id));
+  item(r, buildCardEl(CARDS.sea_hunter, false), 'face down');
+}
+
+// Every state class, on one card each, at the default size.
+head('State classes at --slot-w 84px');
+const states = ['', 'selected', 'legal-target', 'illegal', 'revealed', 'destroyed',
+                'destroying', 'impact', 'entering', 'shake', 'shielded'];
+const sr = row(84);
+states.forEach(cls => {
+  const el = buildCardEl(CARDS.destroyer, true);
+  if (cls) el.classList.add(cls);
+  item(sr, el, cls || '(none)');
+});
+// P9 fix 5's two backs. `known` marks an opponent card the player has
+// already seen face-up this round (render/input.js keeps the uid set). It
+// cannot be reached from the QA tour -- the seeded match never re-hides a
+// revealed card -- so the gallery is where it gets looked at.
+item(sr, buildCardEl(CARDS.destroyer, false), 'face-down');
+const knownBack = buildCardEl(CARDS.destroyer, false);
+knownBack.classList.add('known');
+item(sr, knownBack, 'face-down known');
+
+// Art byte sizes, so the P10 <=4 KB budget is visible in the screenshot itself.
+head('Art byte sizes (UTF-8)');
+const enc = new TextEncoder();
+const tbl = document.createElement('table');
+tbl.className = 'g-sizes';
+let total = 0;
+CARD_ORDER.forEach(id => {
+  const n = enc.encode(ART[id] || '').length;
+  total += n;
+  tbl.insertAdjacentHTML('beforeend',
+    `<tr><td>${id}</td><td>${n} B</td><td>${n <= 4096 ? 'ok' : 'OVER 4 KB'}</td></tr>`);
+});
+const b = enc.encode(ART_BACK).length;
+tbl.insertAdjacentHTML('beforeend', `<tr><td>(back)</td><td>${b} B</td><td>${b <= 4096 ? 'ok' : 'OVER 4 KB'}</td></tr>`);
+tbl.insertAdjacentHTML('beforeend', `<tr><td>total</td><td>${total + b} B</td><td></td></tr>`);
+out.appendChild(tbl);
+
+// ---- P11 ------------------------------------------------------------
+
+// One card per strength tier, side by side at the smallest and the largest
+// size. The P11 fix is specifically about whether the tier survives the
+// 64px fan, and three cards next to each other is the only way to see that
+// -- a tier is a relative read, not an absolute one.
+head('Strength tiers at 64 / 84 / 120px',
+     'plain 0-1, silver 2-3, gold 4-5. The question this row answers: can '
+     + 'you sort these three without reading the number?');
+for (const w of [64, 84, 120]) {
+  const r = row(w);
+  [['mine', 'plain'], ['patrol_ship', 'silver'], ['battleship', 'gold']]
+    .forEach(([id, tier]) => item(r, buildCardEl(CARDS[id], true), tier + ' / ' + id));
+}
+
+// Every role glyph, one card each -- the five glyphs have to be tellable
+// apart at 64px or the icon language is decoration.
+head('Role glyphs at 64px', 'ship / air / shore / sub / mine');
+const gr = row(64);
+['destroyer', 'plane', 'coastal_artillery', 'submarine', 'mine']
+  .forEach(id => item(gr, buildCardEl(CARDS[id], true), id));
+
+// Islands at the three sizes they actually appear at on the board.
+head('Island cards', 'centre-band card, captured chip, enlarged overlay art');
+const ir = row(84);
+Object.keys(ISLANDS).forEach(id => {
+  item(ir, buildIslandEl(ISLANDS[id], 'active', { strength: 3 }), id);
+});
+const ir2 = row(84);
+Object.keys(ISLANDS).forEach(id => {
+  item(ir2, buildIslandEl(ISLANDS[id], 'chip', { mine: true }), id + ' chip');
+});
+
+// Downloaded art payload. Fetched rather than hard-coded so the number in
+// the screenshot is the number the browser actually pulls, and so a
+// regenerated art file cannot silently blow the budget.
+head('Illustrated art payload (render/art/*.svg)',
+     'budget: 6 KB per file, 600 KB total added payload');
+const tbl2 = document.createElement('table');
+tbl2.className = 'g-sizes';
+out.appendChild(tbl2);
+const ART_IDS = [...ART_FILES, ...Object.keys(ISLANDS)];
+let grand = 0;
+for (const id of ART_IDS) {
+  let n = -1;
+  try {
+    const res = await fetch(artUrl(id));
+    n = (await res.blob()).size;
+  } catch (e) { /* leave -1, printed as MISSING below */ }
+  if (n >= 0) grand += n;
+  tbl2.insertAdjacentHTML('beforeend',
+    `<tr><td>${id}.svg</td><td>${n < 0 ? 'MISSING' : n + ' B'}</td>`
+    + `<td>${n >= 0 && n <= 6144 ? 'ok' : 'OVER 6 KB'}</td></tr>`);
+}
+tbl2.insertAdjacentHTML('beforeend',
+  `<tr><td>total</td><td>${grand} B</td>`
+  + `<td>${grand <= 600 * 1024 ? 'ok' : 'OVER 600 KB'}</td></tr>`);
+</script>
+</body>
+</html>

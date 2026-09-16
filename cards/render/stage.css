@@ -1,0 +1,1299 @@
+/* ============================================================
+   Sea Hunter -- P0 "Scene": the one-screen match stage.
+
+   Loaded AFTER style.css and scoped entirely to #game-screen, so nothing
+   here touches the menu, shop, campaign, voyage or modal screens.
+
+   The whole match lives inside a single fixed-position .stage whose zone
+   heights are derived from --stage-h, so the page height can never exceed
+   the viewport and the page never scrolls:
+
+     1  top bar        44px   round / score / phase / icon buttons
+     2  opponent strip 64px   avatar, name, hand count, captured islands
+     3  opponent board flex   reserve row above front row, 4 slots each
+     4  centre band    72px   island deck | active island | turn banner
+     5  player board   flex   front row above reserve row
+     6  player strip   40px   your islands left, artifacts right
+     7  hand          140px   fanned with CSS transforms, no scrolling
+
+   Phone (portrait): the stage IS the viewport. Desktop: the same 9:16
+   stage is centred at max 480px wide with the sea painted around it.
+
+   IMPORTANT: style.css sets `html { font-size: 30px }`, so every inherited
+   `rem` rule from that file lands ~1.9x oversized inside this compact
+   stage. Everything in here is therefore sized in px (or in units derived
+   from --stage-h / --slot-w), and the rem-based rules that reach into the
+   stage are explicitly re-stated below.
+   ============================================================ */
+
+/* ---- Stage sizing ---------------------------------------------------
+   Two constraints decide the slot size and the SMALLER wins:
+     - width:  a slot is 22% of the stage width (spec), 3:4 aspect;
+     - height: two board rows plus a gap must fit the leftover height
+               after the five fixed-height zones.
+   On a 1512x794 desktop the width rule alone would ask for 131px-tall
+   slots and overflow the stage by ~90px, so the height clamp is what
+   keeps desktop honest; on a 412x915 phone the width rule wins. */
+#game-screen,
+#game-screen.screen {
+  --gap: 4px;
+  --hud-h: 44px;
+  --opp-strip-h: 64px;
+  --centre-h: 72px;
+  --player-strip-h: 40px;
+  --hand-h: 140px;
+  --fixed-h: calc(var(--hud-h) + var(--opp-strip-h) + var(--centre-h) + var(--player-strip-h) + var(--hand-h));
+
+  --stage-w: 100vw;
+  --stage-h: 100dvh;
+  --board-h: calc((var(--stage-h) - var(--fixed-h) - 6 * var(--gap)) / 2);
+  --slot-h: min(calc(var(--stage-w) * 0.22 * 4 / 3), calc((var(--board-h) - var(--gap)) / 2));
+  --slot-w: calc(var(--slot-h) * 3 / 4);
+
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  overflow: hidden;
+  /* Re-centres the stage. This rule has to carry the `.screen` class
+     too: style.css's `#game-screen.screen` sets align-items:stretch /
+     justify-content:flex-start for the old free-flowing column layout,
+     and a bare `#game-screen` selector loses to it on specificity --
+     which left the desktop stage jammed against the left edge. */
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--sea-gradient);
+  color: var(--ink);
+}
+
+/* Desktop and any viewport too wide to be a phone in portrait: a centred
+   9:16 stage, capped at 480px, with the sea showing around it. */
+@media (min-width: 600px) {
+  /* Must match the base block's `#game-screen.screen` specificity -- a
+     media query adds none of its own. */
+  #game-screen.screen {
+    --stage-w: min(480px, calc(100dvh * 9 / 16));
+    --stage-h: min(calc(var(--stage-w) * 16 / 9), 100dvh);
+  }
+  #game-screen .stage {
+    border-radius: 18px;
+    box-shadow: var(--shadow-soft), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+  }
+}
+
+#game-screen .stage {
+  position: relative;
+  /* P12: the ocean layer (render/ocean.js) is a `z-index: -1` absolute
+     child. `isolation` forces the stage to be a stacking context of its
+     own, so that -1 is resolved INSIDE the stage -- above the stage's own
+     background, below every non-positioned grid item -- instead of falling
+     through to #game-screen and painting behind the stage entirely. */
+  isolation: isolate;
+  width: var(--stage-w);
+  height: var(--stage-h);
+  display: grid;
+  /* An explicit single column is load-bearing: without it the implicit
+     column is max-content-sized and the hand row's 14 un-overlapped cards
+     blow the stage out to ~1300px wide, dragging every zone off-screen. */
+  grid-template-columns: minmax(0, 100%);
+  grid-template-rows:
+    var(--hud-h)
+    var(--opp-strip-h)
+    1fr
+    var(--centre-h)
+    1fr
+    var(--player-strip-h)
+    var(--hand-h);
+  gap: var(--gap);
+  padding: 0;
+  background: var(--sea-gradient);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+}
+#game-screen .stage > * { min-width: 0; max-width: 100%; }
+
+/* ---- 1. Top bar ----------------------------------------------------- */
+#game-screen .hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 8px;
+  height: var(--hud-h);
+  background: rgba(8, 40, 70, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  color: #eef4fb;
+  font-weight: 700;
+  min-width: 0;
+}
+#game-screen .hud-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: 11px;
+  line-height: 1.18;
+  color: #cfe3f5;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+#game-screen #score-info { color: #ffffff; font-weight: 800; }
+#game-screen .hud-center {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffeacb;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+#game-screen .hud-right { display: flex; gap: 6px; flex: 0 0 auto; }
+#game-screen .btn-icon {
+  width: 30px; height: 30px;
+  padding: 0;
+  font-size: 12px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #eef4fb;
+}
+#game-screen .btn-icon svg {
+  width: 17px; height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#game-screen .btn-icon svg rect { fill: currentColor; stroke: none; }
+
+/* ---- 2. Opponent strip ---------------------------------------------- */
+#game-screen .opp-strip,
+#game-screen .player-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+#game-screen .strip-avatar {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+}
+#game-screen .strip-name {
+  flex: 0 1 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #eef4fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 96px;
+}
+
+/* Opponent hand: ONE card back plus a count badge. The old layout laid 14
+   face-down cards out as a scrolling row, which is both unreadable and the
+   single biggest waste of vertical space on a phone. ui.js's
+   renderOppHand() renders the single back and writes the count into
+   data-count. */
+#game-screen .opp-hand {
+  position: relative;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 36px;
+}
+#game-screen .opp-hand .card {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 6px;
+}
+#game-screen .opp-hand::after {
+  content: attr(data-count);
+  position: absolute;
+  right: -7px;
+  bottom: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border-radius: 9px;
+  background: var(--sea-mid);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+#game-screen .opp-hand[data-count="0"]::after,
+#game-screen .opp-hand:empty { display: none; }
+
+/* Island / artifact chips -- small pills, not cards. createIslandEl()
+   hardcodes inline `font-size: 1.5em` / `0.6em` on its spans, and inline
+   styles beat any stylesheet rule, so the chip's own font-size is what
+   scales them down here. */
+#game-screen .islands-row,
+#game-screen .artifacts-row {
+  display: flex;
+  gap: 3px;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  font-size: 11px;
+}
+#game-screen .player-strip .islands-row { justify-content: flex-start; }
+#game-screen .opp-strip .islands-row { justify-content: flex-end; }
+#game-screen .strip-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+#game-screen .side-label-note { font-size: 10px; color: #cfe3f5; }
+
+#game-screen .islands-row .island-card,
+#game-screen .artifacts-row .artifact-card {
+  width: 28px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  background: rgba(244, 239, 230, 0.9);
+  border: 1px solid rgba(28, 36, 49, 0.25);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#game-screen .islands-row .island-card.mine { border-color: var(--gold); }
+#game-screen .islands-row .card-name,
+#game-screen .artifacts-row .card-name { display: none; }
+#game-screen .islands-row .card-face,
+#game-screen .artifacts-row .card-face { padding: 0 !important; gap: 0; }
+
+/* ---- 3 & 5. Boards --------------------------------------------------- */
+#game-screen .board-zone {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--gap);
+  padding: 0 6px;
+  min-height: 0;
+}
+#game-screen .zone {
+  display: grid;
+  grid-template-columns: repeat(4, var(--slot-w));
+  justify-content: center;
+  align-items: center;
+  gap: var(--gap);
+  padding: 0;
+  min-height: 0;
+  background: none;
+  border-radius: 0;
+}
+/* The FRONT/RESERVE edge labels from style.css sat 12px above their zone;
+   at stage density they would collide with the row above. Row order (and
+   the divider below) already says which is which. */
+#game-screen .front-zone::before,
+#game-screen .reserve-zone::before { content: none; }
+/* Spec order for the opponent's half is RESERVE above FRONT (the two front
+   lines meet at the centre band). style.css's `#opp-front { order: 1 }`
+   flipped that for the old board, so restate it here. */
+#game-screen #opp-reserve { order: 1; }
+#game-screen #opp-front { order: 2; }
+
+/* A hairline horizon between the two front rows marks the battle line. */
+#game-screen .player-section { border-top: 1px solid rgba(255, 255, 255, 0.16); padding-top: 4px; }
+
+#game-screen .slot {
+  width: var(--slot-w);
+  height: var(--slot-h);
+  border: 1px dashed var(--slot-outline);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+}
+#game-screen .slot.empty { opacity: 1; background: rgba(255, 255, 255, 0.04); }
+#game-screen .slot.highlight,
+#game-screen .slot.dragover {
+  border: 2px solid var(--slot-highlight);
+  background: rgba(56, 189, 248, 0.18);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3);
+}
+#game-screen .slot.target-highlight {
+  border: 2px solid var(--negative);
+  box-shadow: 0 0 0 2px rgba(201, 74, 61, 0.35);
+}
+
+/* Card visuals proper are phase P1 -- this only resizes the existing card
+   and restates the rem-based type at stage scale. */
+#game-screen .card {
+  width: var(--slot-w);
+  height: var(--slot-h);
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid rgba(28, 36, 49, 0.2);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+#game-screen .card-emoji { font-size: 15px; }
+#game-screen .card-name { font-size: 9px; color: var(--ink-dim); line-height: 1.15; }
+#game-screen .card-strength { font-size: 9px; font-weight: 800; color: var(--accent); }
+#game-screen .card.face-down {
+  background: linear-gradient(160deg, #14598f, #0c3c66);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+#game-screen .card.face-down .card-back { font-size: 11px; color: rgba(255, 255, 255, 0.7); }
+#game-screen .opp-hand-card.face-down .card-back { font-size: 10px; }
+#game-screen .card.shielded { box-shadow: 0 0 0 3px var(--positive); }
+
+/* ---- 4. Centre band -------------------------------------------------- */
+/* `position: relative` unconditionally (P12): the P9 block near the end of
+   this file already set it, but only inside a portrait/tall media query,
+   and the two `.ocean-foam` children render/ocean.js appends have to be
+   positioned against the plank in every orientation. */
+#game-screen .centre-band {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  height: var(--centre-h);
+  background: rgba(8, 40, 70, 0.32);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 0;
+}
+#game-screen .island-deck,
+#game-screen .active-island {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  color: #cfe3f5;
+  min-width: 0;
+}
+#game-screen .island-deck { grid-column: 1; justify-self: start; }
+#game-screen .active-island { grid-column: 2; }
+#game-screen .island-deck.hidden,
+#game-screen .active-island.hidden { display: none !important; }
+#game-screen .island-back {
+  width: 26px; height: 34px;
+  font-size: 12px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, #14598f, #0c3c66);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+#game-screen .active-island .island-card {
+  width: 40px;
+  height: 52px;
+  background: var(--surface);
+  border: 2px solid var(--gold);
+  border-radius: 9px;
+}
+#game-screen .active-island .card-emoji { font-size: 14px !important; }
+#game-screen .active-island .card-name {
+  font-size: 7px !important;
+  /* P9 fix 3: the 38px clamp plus an ellipsis was the single worst
+     truncation on the board ("Two-Island" printed as "Tw..."). The island
+     card that actually renders here is render/islands.js's .ic-card, so
+     this rule only ever reaches the legacy markup -- left in place, but
+     wrapping rather than truncating. */
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Turn banner -- right cell. Clamped to two lines so a long status line
+   (ability prompts, capture messages) can never grow the band. */
+#game-screen .status-bar {
+  grid-column: 3;
+  justify-self: end;
+  text-align: right;
+  min-height: 0;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1.22;
+  font-weight: 700;
+  color: #ffe4c4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+/* ---- 7. Hand --------------------------------------------------------- */
+/* Never scrolls: ui.js's layoutHandRow() tightens the negative margin
+   until all 14 cards span the row exactly. `overflow: visible` so the
+   hover lift is not clipped -- the stage itself is the clip boundary. */
+#game-screen .hand-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 0 8px 6px;
+  height: var(--hand-h);
+  overflow: visible;
+}
+#game-screen .hand-row .card { flex-shrink: 0; }
+#game-screen .hand-row .card.hover-focus {
+  transform: translateY(-12px) scale(1.12);
+  z-index: 50;
+  box-shadow: 0 8px 18px rgba(4, 22, 40, 0.45);
+}
+
+/* ---- Action buttons -------------------------------------------------- */
+/* Floated over the top-right of the hand band (where MTG Arena puts its
+   action button) so they cost the stage no height of their own. */
+#game-screen .controls {
+  position: absolute;
+  right: 8px;
+  bottom: calc(var(--hand-h) - 22px);
+  z-index: 40;
+  display: flex;
+  gap: 6px;
+  padding: 0;
+  justify-content: flex-end;
+  align-items: center;
+}
+#game-screen .controls .btn-primary {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 16px;
+  border-radius: 10px;
+  background: var(--accent-warm);
+  color: #ffffff;
+  box-shadow: var(--shadow-soft);
+}
+#game-screen .controls .btn-secondary {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  margin-top: 0;
+  border-radius: 10px;
+  background: rgba(8, 40, 70, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #eef4fb;
+}
+
+/* ---- Combat log ------------------------------------------------------ */
+/* The badge is the 4th top-bar icon (it used to be position:fixed against
+   the viewport, which on desktop parked it outside the 480px stage and on
+   a phone sat on top of the opponent's 4th reserve slot -- a tappable
+   target). The drawer is absolutely positioned against .stage, which is
+   `position: relative`. */
+#game-screen .combat-log {
+  position: static;
+  max-width: none;
+  gap: 0;
+  font-size: 10px;
+}
+#game-screen .combat-log-toggle {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  font-size: 11px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #eef4fb;
+}
+#game-screen .combat-log-toggle svg {
+  width: 15px; height: 15px;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+#game-screen .combat-log-count {
+  top: -3px; right: -3px;
+  min-width: 14px; height: 14px;
+  border-radius: 7px;
+  background: var(--sea-mid);
+  color: #ffffff;
+  font-size: 9px;
+}
+#game-screen #log-entries {
+  position: absolute;
+  top: calc(var(--hud-h) + 4px);
+  right: 8px;
+  z-index: 60;
+  width: min(230px, calc(var(--stage-w) - 24px));
+  max-height: calc(var(--stage-h) * 0.4);
+  font-size: 10px;
+  background: rgba(8, 32, 55, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius);
+  color: #dfeaf6;
+  padding: 6px;
+}
+#game-screen .log-entry { padding: 2px 0; color: #c4d7e8; }
+
+/* ---- Overlay ---------------------------------------------------------- */
+#game-screen #impact-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 70; }
+
+/* ============================================================
+   P0.1 "Landscape and desktop"
+   ============================================================ */
+
+/* The "(first to N)" tail of the score, split out of ui.js's textContent so
+   landscape can drop it (one-line top bar) without a JS branch on
+   orientation. `data-target` is written by ui.js's updateHud(). */
+#game-screen #score-info::after {
+  content: " (first to " attr(data-target) ")";
+  font-weight: 700;
+  color: #cfe3f5;
+}
+
+/* ---- Landscape phone ------------------------------------------------
+   A Motorola edge 30 rotated to landscape is ~915x412 CSS px, which
+   matches the `min-width: 600px` block above: the 9:16 rule collapsed the
+   stage to a 232px column, `--board-h` went negative (zero-height slot
+   rows) and the hand fell off the bottom. Landscape gets its own layout
+   instead of a squeezed portrait one: three columns -- opponent board
+   left, island/turn/score centre, player board + hand right.
+
+   The height budget is the RIGHT column (two board rows stacked above the
+   hand), so `--slot-h` is solved from it and from the column width, and
+   `--hand-h` is then derived from `--slot-h`. Deriving it the other way
+   round (as the portrait block does) would be a custom-property cycle --
+   `--slot-h` -> `--board-h` -> `--hand-h` -> `--slot-h` -- and the whole
+   chain would resolve to the guaranteed-invalid value. */
+@media (orientation: landscape) and (max-height: 600px) {
+  /* Same specificity as the base block: a media query adds none of its
+     own, and `#game-screen.screen` from style.css would otherwise win. */
+  #game-screen.screen {
+    --gap: 4px;
+    --hud-h: 36px;
+    --opp-strip-h: 30px;
+    --player-strip-h: 30px;
+
+    /* One third of the stage, minus the two inter-column gaps. */
+    --col-w: calc((100vw - 2 * var(--gap)) / 3);
+    /* 4 slots + 3 gaps + the board zone's 7px side padding. */
+    --slot-w: calc((var(--col-w) - 26px) / 4);
+    /* Two board rows plus the hand row have to fit the column height. */
+    --slot-h: min(
+      calc(var(--slot-w) * 4 / 3),
+      calc((100dvh - var(--hud-h) - var(--player-strip-h) - 24px - 5 * var(--gap)) / 3)
+    );
+    /* Headroom for the P2 fan lift (12px arc + 18px focus lift) so a
+       raised hand card stays inside its own row. */
+    --hand-h: calc(var(--slot-h) + 30px);
+
+    --stage-w: 100vw;
+    --stage-h: 100dvh;
+  }
+
+  /* Edge to edge -- the rounded, shadowed floating stage from the
+     `min-width: 600px` block is for a desktop window, not a phone held
+     sideways. */
+  #game-screen .stage {
+    border-radius: 0;
+    box-shadow: none;
+    /* Areas rather than DOM reordering: index.html's order stays
+       hud, opp-strip, opp-board, centre, player-board, player-strip, hand
+       and every named area below is a rectangle. */
+    grid-template-columns: var(--col-w) var(--col-w) minmax(0, 1fr);
+    grid-template-rows:
+      var(--hud-h)
+      var(--opp-strip-h)
+      minmax(0, 1fr)
+      var(--player-strip-h)
+      var(--hand-h);
+    grid-template-areas:
+      "hud    hud    hud"
+      "oboard ostrip pboard"
+      "oboard centre pboard"
+      "oboard centre pstrip"
+      "oboard centre hand";
+  }
+  #game-screen .hud { grid-area: hud; }
+  #game-screen .opp-strip { grid-area: ostrip; }
+  #game-screen .opp-section { grid-area: oboard; }
+  #game-screen .centre-band { grid-area: centre; }
+  #game-screen .player-section { grid-area: pboard; }
+  #game-screen .player-strip { grid-area: pstrip; }
+  #game-screen .hand-row { grid-area: hand; }
+
+  /* Top bar on ONE line. The two hud-left spans are stacked in portrait;
+     side by side they fit 915px easily, and `#score-info::after` (the
+     "(first to N)" tail) is dropped -- it is what wrapped the bar to four
+     lines once the stage was only 232px wide. */
+  #game-screen .hud {
+    height: var(--hud-h);
+    padding: 0 10px;
+  }
+  #game-screen .hud-left {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+    white-space: nowrap;
+  }
+  #game-screen #score-info::after { content: none; }
+  #game-screen .btn-icon,
+  #game-screen .combat-log-toggle { width: 26px; height: 26px; }
+
+  /* Boards: both halves are now vertical stacks of two rows inside their
+     own column, so the horizon rule between the front lines no longer
+     describes anything -- the battle line runs down the middle instead. */
+  /* Both boards start at the top of their (differently tall) areas, so the
+     two front lines read as a mirrored pair across the centre column.
+     Centring instead would drop the opponent's board ~50px lower, since its
+     area spans the whole stage height and the player's does not. */
+  #game-screen .board-zone { padding: 0 7px; justify-content: flex-start; }
+  #game-screen .player-section { border-top: none; padding-top: 0; }
+  /* style.css draws the battle-line seam as a horizontal bar above the
+     player section (`.player-section::before`). Side by side the seam runs
+     down the column's inner edge instead. */
+  #game-screen .player-section::before {
+    content: "";
+    top: 0; bottom: 0; left: -4px; right: auto;
+    width: 3px; height: auto;
+    background: linear-gradient(to right, var(--accent), var(--hc-candy-orange));
+    box-shadow: -3px 0 8px -3px rgba(56, 189, 248, 0.6), 3px 0 8px -3px rgba(255, 138, 61, 0.6);
+  }
+  #game-screen .opp-section { border-right: 1px solid rgba(255, 255, 255, 0.14); }
+
+  /* Centre column: island deck, active island, turn banner, score -- a
+     flex column now, so the fixed 72px band height and the three-cell
+     grid placement of its children both have to go. */
+  #game-screen .centre-band {
+    height: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 8px 44px;
+    border-top: none;
+    border-bottom: none;
+    overflow: hidden;
+  }
+  #game-screen .island-deck { flex-direction: row; gap: 5px; }
+  #game-screen .status-bar {
+    justify-self: auto;
+    text-align: center;
+    font-size: 11px;
+    -webkit-line-clamp: 4;
+  }
+
+  /* Ready / Auto-place used to float over the top-right of the hand band,
+     which in landscape is the player strip's artifact counter. Park them
+     at the foot of the centre column instead -- clear of both boards and
+     of the hand. The centre band's 44px bottom padding is their seat. */
+  #game-screen .controls {
+    left: var(--col-w);
+    right: auto;
+    width: var(--col-w);
+    bottom: 6px;
+    justify-content: center;
+    gap: 6px;
+  }
+  #game-screen .controls .btn-primary { font-size: 11px; padding: 6px 13px; }
+  #game-screen .controls .btn-secondary { font-size: 10px; padding: 5px 10px; }
+
+  /* Hand: a bottom strip under the player board, inside the right column.
+     Its own grid row, so it can never overlap the slots above it. */
+  #game-screen .hand-row {
+    height: var(--hand-h);
+    padding-bottom: 7px;
+  }
+
+  /* The count badge hangs 5px below the card back; at a 30px strip the
+     36px portrait back plus badge is clipped by the strip's overflow. */
+  #game-screen .opp-hand { width: 20px; height: 26px; }
+  #game-screen .opp-strip { justify-content: center; }
+
+  /* The log drawer is anchored to the stage, which is now 915px wide. */
+  #game-screen #log-entries { max-height: calc(100dvh - var(--hud-h) - 16px); }
+}
+
+/* ---- Desktop --------------------------------------------------------
+   The centred 9:16 stage from P0, but 90% of the viewport height rather
+   than all of it, with a vignette painted on the surrounding sea so the
+   stage reads as the lit table in a dark room. `--stage-w` is solved from
+   the 90% height FIRST so the 480px cap still applies at 1080p. */
+@media (min-width: 1024px) and (min-height: 700px) {
+  #game-screen.screen {
+    /* Height first, width derived: the P0 rule capped the stage at 480px
+       wide, which on a 1080p screen left it at 79% of the viewport height
+       instead of the 90% this phase asks for. `min-height: 700px` is what
+       makes dropping the cap safe -- below that the stage would be too
+       short for the fixed-height zones. */
+    --stage-h: calc(100dvh * 0.9);
+    --stage-w: calc(var(--stage-h) * 9 / 16);
+
+    /* The P0 chain sizes the slot against a FIXED 140px hand row, which was
+       exactly right while the stage was capped at 480px wide (the width
+       rule tops out at a 140.8px slot there). Without the cap a 1080p stage
+       is 547px wide, the slot grows past 140px and the hand cards overflow
+       their row and get clipped by the stage. So re-solve the chain here,
+       height-first and non-circularly (--slot-h must not depend on
+       --hand-h): five card rows -- four board rows plus the hand -- and the
+       two intra-board gaps have to fit what the fixed-height zones leave.
+       --hand-h then follows from --slot-h, with 40px of headroom -- enough
+       both for the P2 fan lift and for the action buttons, which float over
+       the top of the hand band (their `bottom` is derived from --hand-h)
+       and would otherwise sit on the card faces. */
+    --slot-h: min(
+      calc(var(--stage-w) * 0.22 * 4 / 3),
+      calc((var(--stage-h) - var(--hud-h) - var(--opp-strip-h) - var(--centre-h)
+            - var(--player-strip-h) - 40px - 8 * var(--gap)) / 5)
+    );
+    --slot-w: calc(var(--slot-h) * 3 / 4);
+    --hand-h: calc(var(--slot-h) + 40px);
+
+    /* Vignette on the full-viewport parent, not on .stage -- .stage clips
+       its own overflow, so painted there it would darken the board instead
+       of the sea around it. */
+    background:
+      radial-gradient(ellipse 70% 65% at center, rgba(2, 14, 28, 0) 0%, rgba(2, 14, 28, 0.18) 55%, rgba(2, 14, 28, 0.72) 100%),
+      var(--sea-gradient);
+  }
+  #game-screen .stage {
+    box-shadow:
+      0 24px 60px rgba(2, 14, 28, 0.55),
+      0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+}
+
+
+/* ============================================================
+   P9 fix 8 -- board hierarchy, and fix 6 -- the turn glow.
+
+   The P8 board painted both halves on the same flat sea, so "whose row is
+   this" had to be read off card facings. Three materials now:
+
+     * the opponent half is 12% darker than the table (a black scrim), so
+       it reads as the far side of the water;
+     * the player half is lighter (a white scrim plus a warmer floor),
+       so it reads as near and as yours;
+     * the centre band between the two front rows is the contested
+       frontline and gets its OWN material -- a plank-and-rope band, not
+       more sea.
+
+   The scrims are on the sections, never on the slots, so nothing here can
+   move a slot or change its size.
+   ============================================================ */
+
+/* Portrait phone and desktop only. The landscape-phone block above lays
+   the same three elements out as COLUMNS (opponent | centre | player), so
+   a horizontal plank band and side margins would fight it; landscape keeps
+   its own seam treatment. */
+@media (orientation: portrait), (min-height: 601px) {
+
+#game-screen .opp-section,
+#game-screen .player-section {
+  position: relative;
+  border-radius: 10px;
+  margin: 0 4px;
+}
+
+/* Opponent half: 14% darker AND cooler (P10 fix 5).
+ *
+ * P9 scrimmed it with a near-black, which darkens without moving the hue,
+ * so at 12% the two halves still read as one sea at two exposures. Two
+ * layers now: a cold navy wash that pulls the whole half towards blue-
+ * violet, over a black scrim that carries most of the value drop. The two
+ * average out to ~0.14 -- water further away is both darker and colder,
+ * and doing only the first of those is what made the P9 board flat. */
+#game-screen .opp-section {
+  background:
+    linear-gradient(180deg, rgba(14, 34, 92, 0.16), rgba(14, 34, 92, 0.08)),
+    linear-gradient(180deg, rgba(2, 10, 22, 0.16), rgba(2, 10, 22, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(3, 14, 28, 0.26);
+}
+
+/* Player half: 6% lighter, and warmed (P10 fix 5).
+ *
+ * The white scrim averages ~0.06 on its own; the amber wash over it is what
+ * makes this half read as NEAR rather than merely as brighter, and it ties
+ * the half to the warm frontline plank and the warm turn glow it sits
+ * against. The P0 hairline border-top is replaced by the centre band's own
+ * top edge below. */
+#game-screen .player-section {
+  background:
+    linear-gradient(180deg, rgba(255, 206, 138, 0.09), rgba(255, 206, 138, 0.04)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.03));
+  box-shadow: inset 0 0 0 1px rgba(255, 236, 206, 0.16);
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Empty slots belong to their half (P10 fix 5).
+ *
+ * The scrims above are on the SECTIONS, and an empty slot paints its own
+ * flat `rgba(255, 255, 255, 0.04)` on top -- so the one element that is
+ * pure "this is the shape of a place" was the one element reading the same
+ * on both sides of the board. Each half's empty slots are now tinted to it:
+ * the far side's recede, the near side's sit forward and warm.
+ * Specificity (1,3,0) beats the shared `#game-screen .slot.empty` (1,2,0)
+ * further up this file. Colour only -- no size, no border, no opacity, so
+ * nothing here can move a slot. */
+#game-screen .opp-section .slot.empty {
+  background: rgba(8, 26, 62, 0.20);
+  border-color: rgba(168, 198, 230, 0.34);
+}
+#game-screen .player-section .slot.empty {
+  background: rgba(255, 233, 198, 0.10);
+  border-color: rgba(255, 233, 198, 0.52);
+}
+
+/* ---- The contested frontline strip ---------------------------------- */
+/* A plank band: two wood tones, evenly spaced dark seams (the repeating
+   gradient is the planking), a rope twist along each edge, and a low glow
+   sitting on the water line. All gradients -- no image, no <defs>. */
+#game-screen .centre-band {
+  background:
+    /* glow, on top of the timber */
+    radial-gradient(120% 90% at 50% 50%, rgba(246, 193, 119, 0.16), rgba(246, 193, 119, 0) 70%),
+    /* plank seams */
+    repeating-linear-gradient(90deg,
+      rgba(28, 16, 6, 0.32) 0 2px,
+      rgba(28, 16, 6, 0) 2px 34px),
+    /* timber */
+    linear-gradient(180deg, #6b5230 0%, #543f24 52%, #3d2d19 100%);
+  border-top: none;
+  border-bottom: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 226, 176, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    0 0 14px rgba(246, 193, 119, 0.14);
+}
+
+/* Rope twist along the two long edges of the band. Two pseudo-elements
+   rather than a border so the twist can be a repeating gradient. */
+#game-screen .centre-band::before,
+#game-screen .centre-band::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(115deg,
+      #c8a36a 0 3px,
+      #8a6a3c 3px 6px);
+  opacity: 0.85;
+}
+#game-screen .centre-band { position: relative; }
+#game-screen .centre-band::before { top: 0; }
+#game-screen .centre-band::after { bottom: 0; }
+
+/* ---- fix 6: the active side's 2px accent glow ----------------------- */
+/* Set by render/input.js's refresh() on the stage, and it frames the
+   SECTION -- the slots inside are untouched, so this can never cover one.
+   Warm for the player, cold-red for the opponent, matching the two turn
+   strips in render/fx.css. */
+/* The turn/status line is printed on the frontline plank, so it needs a
+   warm near-white rather than the pale blue it used on the sea. */
+#game-screen .status-bar { color: #ffeacb; text-shadow: 0 1px 2px rgba(20, 10, 0, 0.75); }
+
+/* P13 fix 2: the player's side is the cool "yours, working" cyan the arc
+   and the selected card use, and the opponent's is the --danger red --
+   which is now reserved (style.css) so a red edge on the far half can only
+   mean "they are acting". Orange stays on the primary buttons. */
+#game-screen .stage.turn-mine .player-section {
+  box-shadow:
+    inset 0 0 0 2px rgba(124, 196, 240, 0.85),
+    0 0 16px rgba(124, 196, 240, 0.30);
+}
+#game-screen .stage.turn-theirs .opp-section {
+  box-shadow:
+    inset 0 0 0 2px rgba(229, 53, 43, 0.85),
+    0 0 18px rgba(229, 53, 43, 0.38);
+}
+@media (prefers-reduced-motion: no-preference) {
+  #game-screen .opp-section,
+  #game-screen .player-section { transition: box-shadow 0.25s ease; }
+}
+}
+
+/* ============================================================
+   P12 "Living board" -- the ocean (render/ocean.js) and ambient life.
+
+   Everything below moves. The rules it obeys are written out at the top of
+   render/ocean.js and are load-bearing for the phone CPU budget; the short
+   version is: transform and opacity only, seven animated ocean layers, no
+   filter/blur/background-position animation anywhere, and `will-change`
+   on the three wave bands and nothing else.
+   ============================================================ */
+
+/* ---- the ocean layer ------------------------------------------------- */
+/* z-index -1 inside `.stage`'s own stacking context (the stage sets
+   `isolation: isolate` above): above the stage's `--sea-gradient`
+   background, below every one of the seven non-positioned grid rows. */
+#game-screen .ocean {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+#game-screen .ocean.ocean-paused * { animation-play-state: paused !important; }
+
+/* Horizon. Four stacked sheets cross-faded by OPACITY -- background-image
+   is not an interpolable property, so fading the gradients themselves
+   would hard-cut on the round that changes the light. Dawn is what shows
+   before render/ocean.js has been told a round. */
+#game-screen .ocean-sky {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1200ms ease;
+}
+#game-screen .ocean:not([data-tod]) .ocean-sky-dawn,
+#game-screen .ocean[data-tod="dawn"] .ocean-sky-dawn,
+#game-screen .ocean[data-tod="day"] .ocean-sky-day,
+#game-screen .ocean[data-tod="dusk"] .ocean-sky-dusk,
+#game-screen .ocean[data-tod="night"] .ocean-sky-night { opacity: 1; }
+
+/* Round 1: low warm sun behind the far water. */
+#game-screen .ocean-sky-dawn {
+  background:
+    radial-gradient(150% 58% at 50% 6%, rgba(255, 178, 112, 0.42), rgba(255, 178, 112, 0) 62%),
+    linear-gradient(180deg, rgba(74, 48, 92, 0.34), rgba(20, 50, 88, 0) 46%);
+}
+/* Round 2: overhead, cool and bright. */
+#game-screen .ocean-sky-day {
+  background:
+    radial-gradient(150% 58% at 50% 4%, rgba(198, 236, 255, 0.40), rgba(198, 236, 255, 0) 60%),
+    linear-gradient(180deg, rgba(126, 202, 240, 0.18), rgba(10, 60, 100, 0) 50%);
+}
+/* Round 3: the sun going down, hot and low. */
+#game-screen .ocean-sky-dusk {
+  background:
+    radial-gradient(150% 58% at 50% 7%, rgba(255, 122, 92, 0.40), rgba(255, 122, 92, 0) 62%),
+    linear-gradient(180deg, rgba(78, 34, 96, 0.44), rgba(16, 36, 70, 0) 54%);
+}
+/* Round 4 and after: night, and it stays night. A cold moon glow, and a
+   value drop over the whole stage so the cards read as lit objects on dark
+   water rather than as the same board with a blue filter. */
+#game-screen .ocean-sky-night {
+  background:
+    radial-gradient(150% 52% at 50% 4%, rgba(132, 168, 226, 0.26), rgba(132, 168, 226, 0) 58%),
+    linear-gradient(180deg, rgba(3, 10, 26, 0.62), rgba(2, 14, 32, 0.30) 58%, rgba(2, 14, 32, 0.44) 100%);
+}
+
+/* Weather: two very soft dark ellipses crossing the stage on long, unequal
+   cycles, under the waves. Cloud SHADOWS -- the camera looks down at water,
+   so a cloud is a dark patch on the sea and nothing else. */
+#game-screen .ocean-cloud {
+  position: absolute;
+  left: -55%;
+  width: 52%;
+  height: 46%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(2, 12, 28, 0.34), rgba(2, 12, 28, 0) 70%);
+  animation: ocean-cloud-cross 64s linear infinite;
+}
+#game-screen .ocean-cloud-a { top: 6%; }
+#game-screen .ocean-cloud-b { top: 52%; height: 38%; width: 44%; animation-duration: 89s; animation-delay: -34s; }
+@keyframes ocean-cloud-cross {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  14%  { opacity: 0.85; }
+  86%  { opacity: 0.85; }
+  100% { transform: translate3d(310%, 0, 0); opacity: 0; }
+}
+
+/* Three wave bands, far to near. The <svg> inside each is 200% of the stage
+   wide and carries two copies of one crest, so translating it left by
+   exactly half its own width loops seamlessly in ONE keyframe. The parallax
+   -- slow and pale far, fast and strong near -- is what turns three stripes
+   into depth. */
+#game-screen .ocean-band {
+  position: absolute;
+  left: 0;
+  width: 200%;
+  will-change: transform;
+  animation: ocean-drift 22s linear infinite;
+}
+#game-screen .ocean-band svg { display: block; width: 100%; height: 100%; }
+#game-screen .ocean-band-far  { top: 11%; height: 8%;  animation-duration: 31s; }
+#game-screen .ocean-band-mid  { top: 44%; height: 11%; animation-duration: 21s; animation-direction: reverse; }
+#game-screen .ocean-band-near { top: 76%; height: 15%; animation-duration: 14s; }
+@keyframes ocean-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-50%, 0, 0); }
+}
+
+/* Foam breaking on the frontline plank. Two children of `.centre-band`
+   (render/ocean.js appends them) rather than part of the ocean layer: the
+   plank is a grid row, and the ocean is forbidden from measuring where. The
+   repeating gradient is a 34px tile, so the drift keyframe travels exactly
+   34px and loops without a seam. */
+#game-screen .ocean-foam {
+  position: absolute;
+  left: -34px;
+  right: -34px;
+  height: 7px;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(86deg,
+    rgba(255, 255, 255, 0) 0 11px,
+    rgba(240, 252, 255, 0.72) 11px 19px,
+    rgba(255, 255, 255, 0) 19px 34px);
+  animation: ocean-foam-drift 7.5s linear infinite, ocean-foam-pulse 3.3s ease-in-out infinite alternate;
+}
+#game-screen .ocean-foam-top { top: -3px; }
+#game-screen .ocean-foam-bottom { bottom: -3px; animation-direction: reverse, alternate; }
+@keyframes ocean-foam-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-34px, 0, 0); }
+}
+@keyframes ocean-foam-pulse {
+  from { opacity: 0.45; }
+  to   { opacity: 0.95; }
+}
+/* Landscape phone has no frontline plank to break against -- the P9 block
+   at the end of this file lays the centre band out as a vertical COLUMN
+   between two board columns and is itself gated to
+   `(orientation: portrait), (min-height: 601px)`. Left in, the two foam
+   lines became horizontal dashes running across the top and bottom of that
+   column and over both boards. This is the exact inverse of that gate. */
+@media (orientation: landscape) and (max-height: 600px) {
+  #game-screen .ocean-foam { display: none; }
+}
+
+/* Reduced motion: the ocean STAYS -- it is the board's material, and taking
+   it away would leave a reduced-motion player on the flat gradient the whole
+   phase exists to replace -- but nothing in it moves. Every layer parks on
+   its first frame, which is a legible seascape, and the horizon still
+   cross-fades with the round (a 1.2 s opacity fade is not motion).
+   `!important` because several of the rules above set `animation` as a
+   shorthand with per-layer overrides, and this has to beat all of them. */
+@media (prefers-reduced-motion: reduce) {
+  #game-screen .ocean-band,
+  #game-screen .ocean-cloud,
+  #game-screen .ocean-foam { animation: none !important; }
+  /* A cloud shadow's keyframes start at opacity 0, so parked on frame one it
+     would simply not be there. Pinned to the value it holds mid-crossing. */
+  #game-screen .ocean-cloud { opacity: 0.85; }
+  /* will-change on a layer that can no longer change is a promoted
+     compositing layer for nothing. */
+  #game-screen .ocean-band { will-change: auto; }
+}
+
+/* ---- ambient life ---------------------------------------------------- */
+/* All of it is inside a no-preference query: a reduced-motion player gets
+   the ocean as still art and a board that does not breathe, with no
+   JS branch anywhere. */
+@media (prefers-reduced-motion: no-preference) {
+
+/* Placed cards bob 2px on a slow sine.
+ *
+ * The animation is on the CARD, never on the slot: render/fx.js measures
+ * board geometry from the slot precisely because it is the one element
+ * guaranteed not to be transformed, and a bobbing slot would give every
+ * lunge, flash and shard a 2px wobble.
+ *
+ * The exclusions are the states that already OWN the card's transform --
+ * ui.js's FLIP entrance writes an inline one, input.js's drag and selection
+ * lift set their own, fx.js's lunge adds `.fx-lunging` -- and a CSS
+ * animation would win over all of them.
+ *
+ * Phase comes from `:nth-child` on the slot rather than from a random
+ * number written into the markup: no JS, no per-card style, and a headless
+ * screenshot pass stays reproducible. Four slots per zone x two zones per
+ * side gives eight distinct phases, which is enough that the row never
+ * reads as one object rocking. */
+#game-screen .board-zone .slot .card:not(.entering):not(.flying):not(.dragging):not(.selected):not(.fx-lunging):not(.fx-shard) {
+  animation: sh-bob 3.6s ease-in-out infinite alternate;
+}
+#game-screen .front-zone .slot:nth-child(1) .card { animation-delay: -0.25s; animation-duration: 3.4s; }
+#game-screen .front-zone .slot:nth-child(2) .card { animation-delay: -1.70s; animation-duration: 4.1s; }
+#game-screen .front-zone .slot:nth-child(3) .card { animation-delay: -0.95s; animation-duration: 3.8s; }
+#game-screen .front-zone .slot:nth-child(4) .card { animation-delay: -2.40s; animation-duration: 4.4s; }
+#game-screen .reserve-zone .slot:nth-child(1) .card { animation-delay: -1.35s; animation-duration: 4.2s; }
+#game-screen .reserve-zone .slot:nth-child(2) .card { animation-delay: -0.60s; animation-duration: 3.6s; }
+#game-screen .reserve-zone .slot:nth-child(3) .card { animation-delay: -2.05s; animation-duration: 4.6s; }
+#game-screen .reserve-zone .slot:nth-child(4) .card { animation-delay: -1.10s; animation-duration: 3.9s; }
+@keyframes sh-bob {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, -2px, 0); }
+}
+
+/* A face-down card catches the light every few seconds. The sheen is a
+   ::after on `.uc-inner-back`, which render/cards.css already makes
+   `position: absolute; overflow: hidden` -- so the streak is clipped to the
+   card back and needs no mask. That pseudo is free: cards.css hangs the
+   gold-tier ring off `.uc-inner:not(.uc-inner-back)::before` and the art
+   recess off `.uc-art::after`, neither of which this collides with.
+   (cards.css is owned by another phase and is not edited here.)
+   The sweep occupies the first 30% of the cycle and the element is
+   invisible for the rest, so the board does not shimmer continuously. */
+#game-screen .board-zone .card.face-down .uc-inner-back::after {
+  content: '';
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: -50%;
+  width: 40%;
+  pointer-events: none;
+  background: linear-gradient(104deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(214, 242, 255, 0.34) 50%,
+    rgba(255, 255, 255, 0) 100%);
+  animation: sh-sheen 5.4s ease-in-out infinite;
+}
+#game-screen .opp-section .slot:nth-child(even) .card.face-down .uc-inner-back::after { animation-delay: -2.7s; }
+#game-screen .player-section .slot:nth-child(odd) .card.face-down .uc-inner-back::after { animation-delay: -1.4s; }
+@keyframes sh-sheen {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+  7%   { opacity: 0.95; }
+  30%  { transform: translate3d(330%, 0, 0); opacity: 0; }
+  100% { transform: translate3d(330%, 0, 0); opacity: 0; }
+}
+
+/* The contested island floats. On the CONTAINER, not on the card -- the
+   island card is what render/islands.js's flyCapture measures when the
+   island flies to a player's strip, and this keeps that measurement on an
+   element with no animation of its own. */
+#game-screen .active-island {
+  animation: sh-float 5.4s ease-in-out infinite alternate;
+}
+@keyframes sh-float {
+  from { transform: translate3d(0, 1.5px, 0); }
+  to   { transform: translate3d(0, -1.5px, 0); }
+}
+
+/* The hand fan breathes on idle. On the ROW, not on the cards: ui.js's
+   layoutHandRow and input.js's fan write per-card transforms, and a CSS
+   animation on a card would replace them and flatten the fan outright.
+   It stops the moment the hand is in use -- a card being dragged or
+   selected is being aimed at a slot, and 1.5px of drift under the pointer
+   is 1.5px of lie. */
+#game-screen .hand-row {
+  animation: sh-breathe 5s ease-in-out infinite alternate;
+}
+#game-screen .stage:has(.card.dragging) .hand-row,
+#game-screen .stage:has(.card.selected) .hand-row { animation: none; }
+@keyframes sh-breathe {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, -1.5px, 0); }
+}
+
+}
+
+
+/* ============================================================
+   P13 fix 2 -- the last-unit warning.
+
+   render/input.js's refresh() puts `.last-card` on the one remaining card
+   of a frontline that is down to a single unit in COMBAT, and
+   `.last-unit-mine` / `.last-unit-theirs` on the stage. The card gets a
+   --danger ring and a "LAST" tag; the half it belongs to gets a red inner
+   edge along its frontline side. Box-shadow, outline and a pseudo only --
+   nothing moves a slot. The turn glow above is a box-shadow on the same
+   section, so the warning is an outline instead and the two can coexist.
+   ============================================================ */
+#game-screen .card.unit-card.last-card {
+  outline: 2px solid var(--danger, #e5352b);
+  outline-offset: 1px;
+}
+/* The tag hangs off the SLOT, not the card: the card's own pseudos are all
+   taken (root ::after is the P13 specular, a face-down inner's ::after is
+   the P12 shimmer), and the opponent's last unit is usually face-down. */
+#game-screen .slot:has(.card.last-card) { position: relative; }
+#game-screen .slot:has(.card.last-card)::after {
+  content: 'LAST';
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  z-index: 21;
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+  color: #ffffff;
+  background: var(--danger, #e5352b);
+  box-shadow: 0 1px 3px rgba(40, 0, 0, 0.6);
+  pointer-events: none;
+}
+#game-screen .stage.last-unit-mine .player-section { outline: 1px solid rgba(229, 53, 43, 0.7); outline-offset: -3px; }
+#game-screen .stage.last-unit-theirs .opp-section { outline: 1px solid rgba(229, 53, 43, 0.7); outline-offset: -3px; }
+@media (prefers-reduced-motion: no-preference) {
+  #game-screen .card.unit-card.last-card { animation: sh-last-pulse 1.2s ease-in-out infinite alternate; }
+  @keyframes sh-last-pulse {
+    from { outline-color: var(--danger, #e5352b); }
+    to   { outline-color: rgba(255, 107, 93, 0.35); }
+  }
+}
+
+/* ============================================================
+   P13 fix 2 -- time of day that reaches the board.
+
+   P12's four skies are layers of the ocean at z-index -1, i.e. UNDER every
+   grid row. On a portrait phone the two halves, their scrims, the plank
+   and the cards cover nearly all of that water, so dawn, day, dusk and
+   night printed as the same board with a slightly different strip of sea
+   between the rows -- which is why the tour frames all looked like day.
+
+   render/ocean.js now also writes `data-tod` on the stage itself, and this
+   wash sits ABOVE the board rows (z-index 20: over the zones and their
+   cards, under the hand at 55+, the controls, the fx layer and every
+   overlay) so the light falls on the cards too. Opacity-only cross-fade,
+   pointer-events none. It starts under the HUD so the round and score stay
+   at full contrast at night.
+     dawn  -- a thin rose haze from the top;
+     day   -- nothing (the reference look);
+     dusk  -- hot orange-magenta from the top fading to violet, with a warm
+              low vignette: clearly evening, never mistaken for dawn;
+     night -- a heavy navy value drop with a vignette and a cold moon glow at
+              the top. Cards stay legible because the drop is 0.4, not 0.6.
+   ============================================================ */
+#game-screen .stage::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--hud-h);
+  bottom: 0;
+  z-index: 20;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 1200ms ease;
+}
+#game-screen .stage[data-tod="dawn"]::after {
+  opacity: 1;
+  background:
+    linear-gradient(180deg, rgba(255, 170, 150, 0.16), rgba(255, 170, 150, 0) 45%);
+}
+#game-screen .stage[data-tod="dusk"]::after {
+  opacity: 1;
+  background:
+    radial-gradient(130% 70% at 50% 110%, rgba(40, 10, 50, 0) 40%, rgba(40, 10, 50, 0.30) 100%),
+    linear-gradient(180deg, rgba(255, 110, 60, 0.30) 0%, rgba(214, 70, 120, 0.20) 45%, rgba(90, 40, 120, 0.22) 100%);
+}
+#game-screen .stage[data-tod="night"]::after {
+  opacity: 1;
+  background:
+    radial-gradient(90% 40% at 50% 0%, rgba(150, 180, 240, 0.16), rgba(150, 180, 240, 0) 70%),
+    radial-gradient(120% 80% at 50% 50%, rgba(2, 8, 24, 0) 45%, rgba(2, 8, 24, 0.42) 100%),
+    linear-gradient(180deg, rgba(4, 12, 40, 0.40), rgba(4, 12, 40, 0.40));
+}

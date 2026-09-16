@@ -1,0 +1,255 @@
+/* Island visuals -- phase P4. Landscape 2:1 island cards on the centre band,
+   the captured-island chips in both strips, and the enlarged card a tap
+   opens.
+
+   Specificity note: stage.css sizes EVERY `#game-screen .card` (width/height
+   from --slot-w/--slot-h) off an id selector, and also sizes `#game-screen
+   .active-island
+   .island-card` (40x52 portrait) and `#game-screen .islands-row
+   .island-card` (28x34); style.css sizes a bare `.island-card`. So every
+   rule below that sets an island card's box carries BOTH the `#game-screen`
+   prefix (to match that id) and `.ic-card` (to win on class count) -- no
+   !important anywhere. Anything that is not an `.ic-card` (artifact chips,
+   the island deck back) keeps its old look. */
+
+.ic-card {
+  position: relative;
+  aspect-ratio: 2 / 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0e3c63;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  display: block;
+  flex: 0 0 auto;
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 200ms ease;
+}
+.ic-card .ic-inner {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+/* z-index: 0 makes the art window a stacking context, which CONTAINS the
+   .ic-img (z 1) and the vignette (z 2) added below. Without it those two
+   stack against .ic-garrison / .ic-used / .ic-band instead -- all of which
+   are position: absolute at z-index auto -- and the illustration paints
+   over the garrison number, the spent-power tick and the island name. */
+.ic-card .ic-art { position: absolute; inset: 0; z-index: 0; }
+.ic-card .ic-svg { width: 100%; height: 100%; display: block; }
+
+/* P11: the painted illustration, over the inline SVG placeholder. Absolute
+   so it cannot change the 2:1 box, object-fit: cover to match the SVG's
+   preserveAspectRatio="slice" crop, and hidden (not un-sourced) when the
+   player turns card art off, so the toggle needs no re-render. */
+.ic-card .ic-img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+body.no-card-art .ic-card .ic-img { display: none; }
+
+/* The same inner vignette the unit cards got. The island card carries its
+   garrison badge, its spent-power tick and its nameplate ON TOP of the art,
+   so darkening the corners is doing double duty here: it settles the
+   illustration into the frame AND buys those three overlays contrast they
+   previously only got from their own shadows. */
+.ic-card .ic-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 118% at 50% 44%,
+      rgba(2, 12, 24, 0) 48%,
+      rgba(2, 12, 24, 0.18) 78%,
+      rgba(2, 12, 24, 0.4) 100%);
+}
+
+/* Name band -- a dark strip across the bottom third, MTGA-style. */
+.ic-card .ic-band {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: linear-gradient(0deg, rgba(8, 20, 34, 0.92), rgba(8, 20, 34, 0.55));
+  padding: 1px 4px;
+  text-align: center;
+}
+.ic-card .ic-name {
+  display: block;
+  color: #f2f7fc;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.12;
+  /* P9 fix 3: no ellipsis anywhere. With NAME_SHORT feeding this span the
+     longest label is "Two-Island", which fits the 52px chip at the 8px
+     floor; anything longer wraps to a second line instead of truncating. */
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: max(8px, 1em);
+}
+
+/* Garrison strength badge -- the unit holding the island. */
+.ic-card .ic-garrison {
+  position: absolute;
+  top: 2px; left: 2px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #f2b544;
+  color: #1c2431;
+  font-weight: 800;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* Spent power: desaturated art plus a check mark. */
+.ic-card.used { filter: grayscale(0.85) brightness(0.72); }
+.ic-card .ic-used {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: rgba(10, 22, 36, 0.78);
+  color: #8ef0b5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ic-card .ic-used svg { width: 13px; height: 13px; }
+
+/* ---- centre band: the contested island ------------------------------ */
+#game-screen .active-island .island-card.ic-card {
+  width: 116px;
+  height: 58px;
+  background: #0e3c63;
+  border: 2px solid var(--gold, #f4c24f);
+  border-radius: 9px;
+  cursor: pointer;
+}
+#game-screen .active-island .island-card.ic-card .ic-name { font-size: 9px; }
+#game-screen .active-island .island-card.ic-card:active { transform: scale(0.97); }
+
+/* ---- captured chips -------------------------------------------------- */
+#game-screen .islands-row .island-card.ic-card {
+  width: 52px;
+  height: 26px;
+  border-radius: 6px;
+  background: #0e3c63;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+}
+#game-screen .islands-row .island-card.ic-card.mine { border-color: var(--gold, #f4c24f); box-shadow: 0 0 6px rgba(244, 194, 79, 0.45); }
+#game-screen .islands-row .island-card.ic-card .ic-garrison {
+  min-width: 12px;
+  font-size: 8px;
+  line-height: 12px;
+  border-radius: 6px;
+}
+#game-screen .islands-row .island-card.ic-card .ic-used { width: 15px; height: 15px; }
+#game-screen .islands-row .island-card.ic-card .ic-used svg { width: 10px; height: 10px; }
+
+/* Usable power -- a warm rim, the one cue that says "tap me now". */
+#game-screen .islands-row .island-card.ic-card.ic-ready {
+  box-shadow: 0 0 0 2px rgba(242, 181, 68, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.ic-card.ic-inert { cursor: default; }
+
+/* ---- enlarged card --------------------------------------------------- */
+.island-detail {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(4, 16, 28, 0.72);
+  backdrop-filter: blur(2px);
+}
+.island-detail-panel {
+  width: min(280px, 100%);
+  background: rgba(12, 32, 52, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+#game-screen .island-detail-panel .island-card.ic-card {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border-width: 2px;
+  margin: 0 auto;
+}
+#game-screen .island-detail-panel .island-card.ic-card .ic-name { font-size: 12px; }
+#game-screen .island-detail-panel .island-card.ic-card .ic-garrison {
+  min-width: 20px;
+  font-size: 12px;
+  line-height: 20px;
+  border-radius: 10px;
+}
+#game-screen .island-detail-panel .island-card.ic-card .ic-used { width: 34px; height: 34px; }
+#game-screen .island-detail-panel .island-card.ic-card .ic-used svg { width: 22px; height: 22px; }
+.island-detail .ic-desc {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #d6e6f5;
+}
+.island-detail-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.island-detail-actions .btn-primary,
+.island-detail-actions .btn-secondary {
+  font-size: 12px;
+  padding: 6px 14px;
+}
+.island-detail .ic-note { font-size: 11px; color: #9fb6ca; }
+
+/* ---- capture ceremony ------------------------------------------------ */
+/* The flying ghost is the one island element pinned to the viewport: it
+   travels from the centre band to a chip in a strip, and both endpoints are
+   read as viewport rects. It is purely decorative and removed on landing. */
+.ic-card.ic-ghost {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  border-color: #ffe6a8;
+  box-shadow: 0 0 18px rgba(255, 214, 128, 0.85);
+}
+.ic-card.ic-landing { opacity: 0.15; }
+.ic-card.ic-landed {
+  animation: ic-land-flash 520ms ease-out;
+}
+@keyframes ic-land-flash {
+  0% { box-shadow: 0 0 0 4px rgba(255, 226, 160, 0.95); filter: brightness(2.1); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 226, 160, 0); filter: brightness(1); }
+}
+
+/* Landscape phones: the centre band shrinks (stage.css), so the card does. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #game-screen .active-island .island-card.ic-card { width: 92px; height: 46px; }
+  #game-screen .active-island .island-card.ic-card .ic-name { font-size: 8px; }
+  #game-screen .islands-row .island-card.ic-card { width: 44px; height: 22px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ic-card,
+  .ic-card.ic-landed { transition: none; animation: none; }
+}

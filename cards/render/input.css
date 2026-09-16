@@ -1,0 +1,287 @@
+/* Sea Hunter -- phase P2 "Input".
+ *
+ * Styles for the pointer-driven interactions implemented in render/input.js:
+ * drag placement, the hand fan, the combat targeting arc, legality
+ * highlighting and turn feedback. Loaded AFTER style.css and render/stage.css
+ * so it can override the older static card rules; everything is scoped under
+ * #game-screen so no other screen is touched.
+ *
+ * Nothing here changes zone geometry -- the P0 stage rows and the P1 card
+ * faces are untouched. This file only adds states.
+ */
+
+/* ---- Gesture surfaces ------------------------------------------------ */
+/* touch-action:none is load-bearing: without it mobile Chrome claims the
+   first vertical move for a scroll and fires pointercancel, which kills
+   every drag on a phone. The hand row and the player board are the only
+   two places a drag can start. */
+#game-screen #player-hand .card,
+#game-screen .player-section .card {
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+/* The fan rotates the outermost cards, whose corners then swing ~9px wider
+   than the flat row. ui.js's layoutHandRow() solves the overlap against the
+   row's own measured padding, so widening the padding here is all it takes
+   to keep a 14-card fan clear of the stage edges on a 412px phone. */
+#game-screen .hand-row { padding-left: 18px; padding-right: 18px; }
+
+/* The action buttons float over the top of the hand band (P0). Once the fan
+   lifts the middle of the hand by a dozen px they end up underneath a card,
+   so raise them clear -- MTG Arena likewise keeps its action button on top
+   of the hand. Still below the targeting arc (62). */
+#game-screen .controls { z-index: 58; }
+
+/* ---- Hand fan -------------------------------------------------------- */
+/* input.js writes the per-card transform inline (rotation + arc lift +
+   neighbour push). The transition is what makes the fan re-flow after a
+   card leaves the hand; it is suppressed while a card is being dragged. */
+#game-screen #player-hand.input-fan .card {
+  transform-origin: 50% 118%;
+  transition: transform 0.22s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+#game-screen #player-hand.input-fan .card.no-anim,
+/* Must out-specify the fan transition above, or the card being dragged
+   rubber-bands 220ms behind the finger. */
+#game-screen #player-hand.input-fan .card.dragging {
+  transition: none;
+}
+/* Spring-back when a drag is released somewhere illegal. Same specificity
+   note as .dragging. */
+#game-screen #player-hand.input-fan .card.drag-return,
+#game-screen .card.drag-return {
+  transition: transform 0.3s cubic-bezier(0.34, 1.42, 0.64, 1);
+}
+
+/* The pressed or hovered card rises clear of its neighbours. The lift
+   itself is part of the inline transform (it has to compose with the
+   card's own fan rotation); only the stacking and the shadow live here.
+   P9 fix 2 takes the scale to 1.25, which is a read size rather than a
+   nudge -- hence the heavier shadow and the accent rim, so the card reads
+   as pulled out of the fan and not merely nearer. */
+#game-screen #player-hand.input-fan .card.hand-focus {
+  z-index: 55;
+  box-shadow:
+    0 14px 28px rgba(4, 22, 40, 0.6),
+    0 0 0 2px var(--uc-accent, #7cc4f0);
+}
+
+/* ---- Hand collapse in COMBAT (P9 fix 2) ------------------------------
+   The row slides down until only COLLAPSED_PEEK (44px) of the cards is
+   still above the stage's bottom edge, which the stage clips. Deliberately
+   NOT a change to --hand-h: that variable feeds stage.css's slot-size
+   min(), so shrinking the band would resize every slot on the board at the
+   PREP -> COMBAT boundary.
+   The travel is (card height) - 44 - (the row's own 6px bottom padding).
+   input.js's COLLAPSED_PEEK constant and this number are the same design
+   decision stated in the two languages. */
+#game-screen .hand-row {
+  position: relative;
+  transition: transform 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+#game-screen .hand-row.hand-collapsed {
+  transform: translateY(calc(var(--slot-h, 112px) - 44px - 6px));
+}
+/* A pull-tab so the strip reads as "there is more here", not as a clipped
+   row. A pseudo-element, not a real node: ui.js owns #player-hand's
+   children and rewrites them on every deal. It rides the row's transform,
+   so it always sits just above the cards' top edge. */
+#game-screen .hand-row.hand-collapsible::before {
+  content: 'HAND';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  z-index: 56;
+  padding: 1px 12px 2px;
+  border-radius: 7px 7px 0 0;
+  background: linear-gradient(180deg, rgba(20, 52, 82, 0.95), rgba(9, 27, 45, 0.95));
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.22) inset;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: #cfe3f5;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+#game-screen .hand-row.hand-collapsed::before { opacity: 1; }
+/* Collapsed cards are reference, not targets: no hover lift competing with
+   the tap that expands the row. */
+#game-screen .hand-row.hand-collapsed .card { cursor: pointer; }
+#game-screen .hand-row.hand-collapsed .card.hand-focus { box-shadow: none; }
+
+/* ---- Drag ------------------------------------------------------------ */
+/* pointer-events:none so elementFromPoint() hit-tests the slot UNDER the
+   card being dragged rather than the card itself. */
+#game-screen .card.dragging {
+  pointer-events: none;
+  z-index: 64;
+  transition: none;
+  cursor: grabbing;
+  box-shadow: 0 16px 30px rgba(3, 16, 30, 0.55);
+  filter: brightness(1.06);
+}
+
+/* ---- Legality ------------------------------------------------------- */
+/* .legal-target lands on a .slot (empty placement slot, attack target,
+   promotable reserve card) or on an island card; .illegal marks the
+   opponent cards that exist but cannot be picked right now. */
+#game-screen .legal-target {
+  border-color: var(--accent, #38bdf8) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.45), 0 0 14px rgba(56, 189, 248, 0.35);
+  animation: legal-pulse 1.4s ease-in-out infinite;
+}
+@keyframes legal-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.40), 0 0 10px rgba(56, 189, 248, 0.25); }
+  50%      { box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.62), 0 0 20px rgba(56, 189, 248, 0.50); }
+}
+#game-screen .slot.legal-target.empty { opacity: 1; }
+
+#game-screen .illegal { opacity: 0.44; filter: saturate(0.5); }
+
+/* The chosen attacker. Kept modest so it cannot overflow its slot. */
+#game-screen .card.selected {
+  outline: 2px solid var(--accent, #38bdf8);
+  outline-offset: 1px;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.55);
+  z-index: 52;
+}
+
+/* ---- Turn feedback --------------------------------------------------- */
+/* Not your turn: your own board reads as inert. Dimming only, never
+   display/visibility, so the board stays fully readable. */
+#game-screen .illegal-dim { opacity: 0.55; filter: grayscale(0.35); }
+
+#game-screen .status-bar.turn-pulse {
+  animation: turn-pulse 0.7s ease-out 1;
+}
+@keyframes turn-pulse {
+  0%   { transform: scale(1); color: #ffe4c4; }
+  35%  { transform: scale(1.14); color: #ffd28a; text-shadow: 0 0 12px rgba(255, 190, 110, 0.75); }
+  100% { transform: scale(1); color: #ffe4c4; }
+}
+
+/* ---- Targeting arc --------------------------------------------------- */
+/* One SVG layer spanning the stage, created by input.js. Sits above the
+   cards (hover-focus is 55, flying cards 60) and above the floating action
+   buttons (40), below the impact overlay (70). Never interactive. */
+#game-screen .input-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 62;
+  pointer-events: none;
+  overflow: visible;
+}
+#game-screen .input-overlay .arc-glow {
+  fill: none;
+  stroke: rgba(246, 193, 119, 0.35);
+  stroke-width: 11;
+  stroke-linecap: round;
+}
+#game-screen .input-overlay .arc-line {
+  fill: none;
+  stroke: #ffd28a;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+#game-screen .input-overlay .arc-head { fill: #ffd28a; }
+
+
+/* ============================================================
+   P10 fix 2 -- the capped hand fan.
+
+   render/input.js lays out at most 9 hand cards, and only as many of those
+   as can each keep a 52px visible left edge. The rest are marked
+   `.hand-stacked` and counted on a "+N" chip; a tap on the chip puts
+   `.hand-expanded` on the row and turns it into a plain scrollable strip.
+
+   Nothing here sets type on its side. P9's `.uc-spine` -- the short name
+   run vertically up the strip -- is gone from cards.css and cards.js; this
+   is what replaced it.
+   ============================================================ */
+
+/* Room at the left end for the chip. Mirrors input.js's CHIP_ROOM (34) plus
+   the row's own 18px resting padding -- the same decision in two
+   languages, so change them together. */
+#game-screen .hand-row.hand-capped { padding-left: 52px; }
+
+/* The stacked cards. Out of FLOW (so the visible cards get the whole row to
+   spread across) but not out of the DOM: ui.js's FLIP reads a rect for every
+   hand card, and a display:none card has none. Parked under the chip, so a
+   stacked card that is played flies out from where the chip says it was. */
+#game-screen #player-hand .card.hand-stacked {
+  position: absolute;
+  left: 8px;
+  top: 0;
+  margin: 0;
+  z-index: 1;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* style.css gives every `.card:not(:first-child)` the solved negative
+   margin. With the stack out of flow, the first card that is actually laid
+   out is no longer :first-child, so it would be dragged left out of the
+   row's padding. (1,3,0) beats style.css's (0,3,0). */
+#game-screen .hand-row .card.hand-stacked + .card:not(.hand-stacked) {
+  margin-left: 0;
+}
+
+/* The "+N" chip. The row's ::after, drawn from `data-hand-overflow` --
+   ui.js owns #player-hand's children and rewrites them on every deal, so a
+   real node here would be wiped, and input.js's mutation observer would see
+   it come back and re-enter refresh(). (::before is already the COMBAT
+   "HAND" pull-tab.) Hit-tested by geometry in input.js's hitChip(). */
+#game-screen .hand-row.hand-capped::after {
+  content: attr(data-hand-overflow);
+  position: absolute;
+  left: 10px;
+  bottom: 22px;
+  z-index: 57;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 7px 4px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  color: #eaf5ff;
+  /* Reads as the edge of a stack of cards rather than as a button: a
+     stepped left edge, the same navy as a card back, and the same contact
+     shadow the cards carry. */
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(180deg, #1d4468, #0a1725);
+  box-shadow:
+    inset 0 0 0 1px rgba(3, 14, 26, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    -3px 0 0 -1px rgba(13, 38, 62, 0.95),
+    -6px 0 0 -2px rgba(13, 38, 62, 0.85),
+    0 3px 8px rgba(2, 12, 28, 0.6);
+  pointer-events: none;
+}
+/* Collapsed in COMBAT: the whole row is a strip, so a chip on top of it is
+   just noise. */
+#game-screen .hand-row.hand-collapsed::after { opacity: 0; }
+
+/* ---- Expanded: a scrollable strip ------------------------------------
+   No fan, no overlap, no lift -- input.js stops writing fan transforms and
+   zeroes --hand-overlap, so this is an ordinary horizontally scrolling row
+   of whole cards. touch-action is pan-x rather than none so the scroll
+   actually works on a phone; a drag out of an expanded hand is a vertical
+   move, which pan-x still delivers as a pointer event. */
+#game-screen .hand-row.hand-expanded {
+  overflow-x: auto;
+  overflow-y: visible;
+  justify-content: flex-start;
+  scrollbar-width: none;
+  padding-left: 18px;
+}
+#game-screen .hand-row.hand-expanded::-webkit-scrollbar { display: none; }
+#game-screen .hand-row.hand-expanded .card { touch-action: pan-x; }
+#game-screen .hand-row.hand-expanded .card.dragging { touch-action: none; }
+#game-screen .hand-row.hand-expanded::after { content: none; }

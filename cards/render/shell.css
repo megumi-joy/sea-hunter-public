@@ -1,0 +1,1916 @@
+/* ============================================================
+   Sea Hunter -- P7 "Shell screens".
+
+   Everything outside the match: loading, main menu, campaign chart,
+   online join, profile, trading post, leaderboard, rules and settings.
+   P0-P6 moved the match onto the MTG-Arena-style stage but left these on
+   the old look (cream page, dark panels, emoji, black pill buttons), so
+   the app read as two different games either side of the Play button.
+
+   This file is loaded LAST in index.html and is scoped BY ID to the shell
+   screens and the four shell modals. Two deliberate exclusions:
+     * #game-screen is never touched -- render/stage.css owns it.
+     * #game-over-modal is never touched -- render/screens.css skinned it
+       in P4; a bare `.modal-inner` rule here would silently regress it.
+   Scoping by id is also what gives these rules the specificity to beat
+   style.css, which reaches the same elements through class selectors.
+
+   IMPORTANT: style.css sets `html { font-size: 30px }`, so an inherited
+   `rem` lands ~1.9x oversized. Everything below is therefore in px, the
+   same rule render/stage.css states for the same reason.
+
+   Tokens come from style.css's :root -- --sea-gradient, --surface, --ink,
+   --ink-dim, --accent-warm, --radius (12px), --shadow-soft. Nothing is
+   redefined here.
+   ============================================================ */
+
+#loading-screen,
+#main-menu,
+#campaign-screen,
+#mp-screen,
+#shop-screen,
+#profile-screen,
+#voyage-screen {
+  background: var(--sea-gradient);
+  color: var(--surface);
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 0;
+}
+
+/* style.css converted #main-menu alone to the cream --hc-bg gradient in an
+   earlier pass. Restate the sea here at equal specificity so the menu joins
+   the rest of the shell. */
+#main-menu {
+  background: var(--sea-gradient);
+}
+
+#loading-screen .loading-inner,
+#main-menu .menu-inner,
+#campaign-screen .menu-inner,
+#mp-screen .menu-inner,
+#shop-screen .menu-inner,
+#profile-screen .menu-inner,
+#voyage-screen .menu-inner {
+  width: 100%;
+  max-width: 460px;
+  padding: 20px 16px 28px;
+  text-align: center;
+}
+
+/* ---- Title ---------------------------------------------------------- */
+#loading-screen .loading-text,
+#main-menu .menu-title,
+#campaign-screen .menu-title,
+#mp-screen .menu-title,
+#shop-screen .menu-title,
+#profile-screen .menu-title {
+  color: #ffffff;
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  margin: 0 0 6px;
+  text-shadow: 0 3px 0 rgba(4, 22, 40, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.shell-logo { flex: 0 0 auto; filter: drop-shadow(0 3px 0 rgba(4, 22, 40, 0.3)); }
+
+#loading-screen .loading-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#loading-screen .loading-logo { animation: bob 1.6s ease-in-out infinite; }
+#loading-screen .loading-text { font-size: 26px; letter-spacing: 0.08em; }
+
+#main-menu .menu-sub,
+#campaign-screen .menu-sub,
+#mp-screen .menu-sub,
+#shop-screen .menu-sub {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+
+/* ---- Buttons --------------------------------------------------------
+   One primary (warm orange, chunky pop shadow that flattens on press) and
+   a stack of secondary surface panels. Sized so eight of them plus the
+   title still fit a 794px-tall desktop window without scrolling. */
+#main-menu .btn-primary,
+#campaign-screen .btn-primary,
+#mp-screen .btn-primary,
+#shop-screen .btn-primary,
+#profile-screen .btn-primary,
+#voyage-screen .btn-primary,
+#settings-modal .btn-primary {
+  display: block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 13px 18px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+  background: var(--accent-warm);
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 0 #b9611a, var(--shadow-soft);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+#main-menu .btn-secondary,
+#campaign-screen .btn-secondary,
+#mp-screen .btn-secondary,
+#shop-screen .btn-secondary,
+#profile-screen .btn-secondary,
+#voyage-screen .btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 11px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius);
+  box-shadow: 0 3px 0 rgba(4, 22, 40, 0.3);
+  text-decoration: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+#main-menu .btn-primary:active,
+#main-menu .btn-secondary:active,
+#campaign-screen .btn-secondary:active,
+#mp-screen .btn-primary:active,
+#mp-screen .btn-secondary:active,
+#shop-screen .btn-secondary:active,
+#profile-screen .btn-primary:active,
+#profile-screen .btn-secondary:active,
+#voyage-screen .btn-secondary:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+#main-menu .btn-primary:disabled,
+#mp-screen .btn-primary:disabled { opacity: 0.45; }
+
+/* The Profile button carries the avatar disc plus the handle, so it is the
+   one secondary button whose content is not a single centred word. */
+#main-menu #btn-profile .menu-avatar { margin: 0; display: inline-flex; }
+
+/* ---- Campaign chart -------------------------------------------------
+   A winding route of island nodes on the sea. The swell, the legs and the
+   node art are all inline SVG (render/shell.js + render/island_art.js) so
+   the chart needs no image assets -- COEP blocks cross-origin art. */
+#campaign-screen .campaign-inner { max-width: 480px; }
+
+#campaign-screen .campaign-levels {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  margin: 0 0 10px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #3d93c7 0%, #1b6ca8 55%, #0f4c81 100%);
+  box-shadow: var(--shadow-soft), inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+
+#campaign-screen .campaign-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+#campaign-screen .map-swell {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.4;
+}
+#campaign-screen .map-leg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-dasharray: 2.5 3;
+}
+#campaign-screen .map-leg.sailed { stroke: var(--gold); opacity: 1; }
+
+#campaign-screen .map-island {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  z-index: 2;
+}
+
+#campaign-screen .map-island .island-shape {
+  position: relative;
+  display: block;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 3px var(--surface), var(--shadow-soft);
+}
+#campaign-screen .map-island .island-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+#campaign-screen .map-island .island-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(4, 22, 40, 0.95), 0 0 6px rgba(4, 22, 40, 0.8);
+}
+#campaign-screen .map-island .island-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+#campaign-screen .map-island .island-badge.cleared { background: var(--positive); }
+#campaign-screen .map-island .island-badge.locked { background: rgba(28, 36, 49, 0.85); }
+
+#campaign-screen .map-island.locked { cursor: not-allowed; }
+#campaign-screen .map-island.locked .island-art { filter: grayscale(0.7) brightness(0.62); }
+#campaign-screen .map-island.locked .island-shape { box-shadow: 0 0 0 3px rgba(244, 239, 230, 0.6), var(--shadow-soft); }
+#campaign-screen .map-island.current .island-shape {
+  box-shadow: 0 0 0 4px var(--gold), var(--shadow-soft);
+  animation: shell-node-pulse 1.6s ease-in-out infinite;
+}
+@keyframes shell-node-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+#campaign-screen .map-ship {
+  position: absolute;
+  transform: translate(-50%, -38px);
+  z-index: 3;
+  width: 0; height: 0;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 14px solid var(--gold);
+  filter: drop-shadow(0 2px 2px rgba(4, 22, 40, 0.6));
+  animation: shell-ship-bob 2s ease-in-out infinite;
+}
+@keyframes shell-ship-bob {
+  0%, 100% { transform: translate(-50%, -38px); }
+  50% { transform: translate(-50%, -44px); }
+}
+
+/* Caption strip: the name and blurb of the island you are about to sail
+   to. They used to hang off the node itself, which clipped against the
+   chart edge for any node near a corner. */
+#campaign-screen .map-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+#campaign-screen .map-caption .cap-title { font-size: 15px; font-weight: 800; }
+#campaign-screen .map-caption .cap-note { font-size: 13px; color: var(--ink-dim); }
+
+/* ---- Online join, profile forms ------------------------------------ */
+#mp-screen .mp-card,
+#profile-screen .mp-card {
+  padding: 14px 14px 16px;
+  margin: 0 0 12px;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+  text-align: left;
+}
+
+#mp-screen .mp-label,
+#profile-screen .mp-label {
+  display: block;
+  margin: 10px 0 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+#mp-screen .mp-label:first-child,
+#profile-screen .mp-label:first-child { margin-top: 0; }
+
+#mp-screen .mp-input,
+#profile-screen .mp-input {
+  width: 100%;
+  padding: 11px 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  background: #ffffff;
+  border: 2px solid rgba(28, 36, 49, 0.16);
+  border-radius: var(--radius);
+  outline: none;
+}
+#mp-screen #mp-room { letter-spacing: 0.12em; text-transform: lowercase; }
+#mp-screen .mp-input:focus,
+#profile-screen .mp-input:focus { border-color: var(--sea-mid); }
+
+#mp-screen .mp-error,
+#profile-screen .mp-error {
+  min-height: 18px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--negative);
+}
+
+/* Bot-join hint: the room code IS the whole matchmaking mechanism, so the
+   screen has to say out loud that being alone is not a dead end. */
+#mp-screen .mp-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  border-radius: var(--radius);
+  background: rgba(242, 140, 40, 0.16);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+#mp-screen .mp-hint svg { flex: 0 0 auto; color: var(--sea-mid); margin-top: 1px; }
+
+/* ---- Avatars -------------------------------------------------------- */
+.avatar-disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  color: #ffffff;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+  vertical-align: middle;
+}
+.avatar-disc.small { width: 24px; height: 24px; }
+.avatar-disc.big { width: 64px; height: 64px; }
+.avatar-initial { font-size: 14px; font-weight: 900; }
+.avatar-disc.big .avatar-initial { font-size: 26px; }
+
+#profile-screen .profile-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+#profile-screen .profile-handle { font-size: 20px; font-weight: 900; color: #ffffff; }
+#profile-screen .avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+#profile-screen .avatar-choice {
+  display: flex; align-items: center; justify-content: center;
+  padding: 4px;
+  background: rgba(28, 36, 49, 0.06);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+}
+#profile-screen .avatar-choice.picked {
+  border-color: var(--gold);
+  background: rgba(242, 140, 40, 0.16);
+}
+
+/* ---- Trading post --------------------------------------------------- */
+#shop-screen .shop-inner { max-width: 480px; }
+
+#shop-screen .shop-balance {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+#shop-screen .coin {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: var(--shadow-soft);
+}
+#shop-screen .coin-gold svg { color: #c9901f; }
+#shop-screen .coin-crystal svg { color: #2f83b8; }
+
+#shop-screen .shop-hold {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 6px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+/* No uppercase: this class also carries the "Your hold is empty." sentence,
+   and shouting it read as an error. */
+#shop-screen .hold-label { font-weight: 800; }
+#shop-screen .hold-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+#shop-screen .shop-items { display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; }
+#shop-screen .shop-item {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  grid-template-areas: 'face body' 'buy buy';
+  gap: 4px 10px;
+  padding: 11px 12px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+  text-align: left;
+}
+#shop-screen .shop-item.disabled { opacity: 1; }
+#shop-screen .shop-item.disabled .shop-face,
+#shop-screen .shop-item.disabled .shop-body { opacity: 0.78; }
+#shop-screen .shop-face {
+  grid-area: face;
+  display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px;
+  border-radius: 10px;
+  background: rgba(27, 108, 168, 0.14);
+  color: var(--sea-mid);
+}
+#shop-screen .shop-body { grid-area: body; }
+#shop-screen .shop-item .version-title { font-size: 15px; font-weight: 800; }
+#shop-screen .shop-item .version-desc { font-size: 13px; color: var(--ink-dim); }
+#shop-screen .shop-price { margin-top: 3px; font-size: 13px; font-weight: 800; }
+#shop-screen .shop-price.is-gold { color: #b07c12; }
+#shop-screen .shop-price.is-crystal { color: #1f6f9e; }
+#shop-screen .shop-item .shop-buy {
+  grid-area: buy;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 9px 14px;
+  font-size: 14px;
+  font-weight: 800;
+  border: none;
+  border-radius: 10px;
+}
+#shop-screen .shop-item .btn-primary.shop-buy {
+  background: var(--accent-warm); color: #ffffff; box-shadow: 0 3px 0 #b9611a;
+}
+#shop-screen .shop-item .btn-secondary.shop-buy {
+  background: rgba(28, 36, 49, 0.1); color: var(--ink-dim); box-shadow: none;
+}
+
+/* ---- Shell modals ---------------------------------------------------
+   Rules, leaderboard, settings and reference. #game-over-modal is
+   deliberately NOT in this list: render/screens.css owns its skin. */
+#rules-modal,
+#leaderboard-modal,
+#settings-modal,
+#reference-modal {
+  background: rgba(8, 32, 56, 0.72);
+  backdrop-filter: blur(3px);
+  padding: 12px;
+}
+
+#rules-modal .modal-inner,
+#leaderboard-modal .modal-inner,
+#settings-modal .modal-inner,
+#reference-modal .modal-inner {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88dvh;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 14px 16px 18px;
+  font-size: 15px;
+  line-height: 1.4;
+  border: none;
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+
+#rules-modal .modal-head,
+#leaderboard-modal .modal-head,
+#settings-modal .modal-head,
+#reference-modal .modal-head {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -14px -16px 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+}
+#rules-modal .modal-head h2,
+#leaderboard-modal .modal-head h2,
+#settings-modal .modal-head h2,
+#reference-modal .modal-head h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+#rules-modal .btn-icon,
+#leaderboard-modal .btn-icon,
+#settings-modal .btn-icon,
+#reference-modal .btn-icon {
+  flex: 0 0 auto;
+  width: 36px; height: 36px;
+  padding: 0;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.1);
+  border: none;
+  border-radius: 10px;
+}
+#rules-modal .btn-icon:active,
+#leaderboard-modal .btn-icon:active,
+#settings-modal .btn-icon:active,
+#reference-modal .btn-icon:active { background: rgba(28, 36, 49, 0.2); }
+
+/* ---- Rules matrix ---------------------------------------------------
+   Eleven columns of unit-art thumbs plus the result glyphs. On a 412px
+   phone that is wider than the panel, so the panel scrolls horizontally
+   rather than shrinking the cells past legibility. */
+#rules-modal .rules-matrix { border-collapse: collapse; margin: 0 auto 12px; }
+#rules-modal .rules-matrix th,
+#rules-modal .rules-matrix td {
+  width: 30px; height: 30px;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  border: 1px solid rgba(28, 36, 49, 0.12);
+}
+#rules-modal .rules-matrix th { background: rgba(27, 108, 168, 0.1); }
+#rules-modal .rules-matrix td { font-size: 13px; font-weight: 800; color: var(--ink-dim); }
+#rules-modal .rules-matrix td.win { color: var(--positive); background: rgba(46, 158, 107, 0.12); }
+#rules-modal .rules-matrix td.loss { color: var(--negative); background: rgba(201, 74, 61, 0.12); }
+#rules-modal .rules-matrix td.draw { color: #b07c12; background: rgba(242, 181, 68, 0.18); }
+#rules-modal .rules-matrix td.none { color: rgba(28, 36, 49, 0.3); }
+
+#rules-modal .rules-subhead { margin: 14px 0 6px; font-size: 17px; font-weight: 900; color: var(--ink); }
+#rules-modal .rules-note { margin: 0 0 8px; font-size: 13px; color: var(--ink-dim); }
+
+#rules-modal .ability-list,
+#reference-modal .ability-list { display: flex; flex-direction: column; gap: 6px; }
+#rules-modal .ability-row,
+#reference-modal .ability-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(27, 108, 168, 0.08);
+  /* style.css sizes .ability-row at 0.78rem, which is 23px at the 30px
+     root -- the row's own strut, not the 13px text inside it, was setting
+     the leading and spreading every description out. */
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+#rules-modal .ability-row strong,
+#reference-modal .ability-row strong { display: block; font-size: 14px; }
+#rules-modal .ability-row span,
+#reference-modal .ability-row span { font-size: 13px; color: var(--ink-dim); }
+#rules-modal .ability-emoji,
+#reference-modal .ability-emoji {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  color: var(--sea-mid);
+  background: rgba(255, 255, 255, 0.6);
+}
+#rules-modal .ability-emoji svg,
+#reference-modal .ability-emoji svg { width: 100%; height: 100%; }
+
+/* ---- Leaderboard ---------------------------------------------------- */
+#leaderboard-modal .leaderboard-tabs { display: flex; gap: 8px; margin: 0 0 10px; }
+#leaderboard-modal .rules-note {
+  margin: 0;
+  padding: 14px 4px;
+  font-size: 14px;
+  text-align: center;
+  color: var(--ink-dim);
+}
+
+#leaderboard-modal .leaderboard-tabs .btn-secondary {
+  flex: 1;
+  margin: 0;
+  padding: 9px 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.08);
+  border: none;
+  border-radius: 10px;
+}
+#leaderboard-modal .leaderboard-list { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: rgba(27, 108, 168, 0.08);
+}
+.lb-row.rank-1 { background: rgba(242, 181, 68, 0.26); }
+.lb-row.rank-2 { background: rgba(28, 36, 49, 0.12); }
+.lb-row.rank-3 { background: rgba(169, 128, 63, 0.2); }
+.lb-rank {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 24px;
+  font-size: 14px; font-weight: 900; color: var(--ink-dim);
+}
+.lb-row.rank-1 .lb-rank { color: #b07c12; }
+.lb-row.rank-2 .lb-rank { color: #6a7382; }
+.lb-row.rank-3 .lb-rank { color: #96702f; }
+.lb-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 14px; font-weight: 700;
+}
+.lb-score { flex: 0 0 auto; font-size: 15px; font-weight: 900; }
+
+/* ---- Settings toggles ----------------------------------------------- */
+#settings-modal .settings-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+#settings-modal .settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 11px;
+  border-radius: var(--radius);
+  background: rgba(27, 108, 168, 0.08);
+  cursor: pointer;
+}
+/* The native box stays in the DOM (ui.js binds its change listener to
+   `input[data-setting-key]`) but is visually replaced by .switch. */
+#settings-modal .settings-row input[type="checkbox"] {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+#settings-modal .settings-row .switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 46px; height: 27px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: rgba(28, 36, 49, 0.22);
+  transition: background 0.15s ease;
+}
+#settings-modal .settings-row .knob {
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 21px; height: 21px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(4, 22, 40, 0.4);
+  transition: transform 0.15s ease;
+}
+#settings-modal .settings-row input:checked + .switch { background: var(--sea-mid); }
+#settings-modal .settings-row input:checked + .switch .knob { transform: translateX(19px); }
+/* .settings-text is itself a <span>, so style.css's `.settings-row span`
+   rule also sizes it (0.8rem = 24px at the 30px root) -- which set the line
+   box strut for the whole row and spread the description out. Restate the
+   size and the leading, not just the colour. */
+#settings-modal .settings-text { color: var(--ink); font-size: 13px; line-height: 1.35; }
+#settings-modal .settings-text strong { display: block; font-size: 15px; font-weight: 800; color: var(--ink); }
+#settings-modal .settings-text span { font-size: 13px; color: var(--ink-dim); }
+
+/* ---- Reference overlay ----------------------------------------------
+   Same class-selector trap as the settings rows and the rules subhead:
+   style.css sizes these in rem (0.75rem is 23px at the 30px root) and
+   colours them for the dark panel -- .ref-card-ability strong is
+   var(--text), which is near-white and invisible on cream. */
+#reference-modal .reference-inner { max-width: 520px; width: auto; }
+#reference-modal h3,
+#reference-modal .rules-subhead { margin: 12px 0 6px; font-size: 17px; font-weight: 900; color: var(--ink); }
+#reference-modal p,
+#reference-modal .rules-note { font-size: 13px; line-height: 1.4; color: var(--ink-dim); }
+#reference-modal .ref-card-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+#reference-modal .ref-card-face { width: 88px; height: 115px; }
+#reference-modal .ref-card-count { font-size: 12px; font-weight: 800; color: var(--sea-mid); }
+#reference-modal .ref-card-ability { font-size: 12px; line-height: 1.35; color: var(--ink-dim); }
+#reference-modal .ref-card-ability strong { color: var(--ink); }
+
+/* ---- Voyage chart ---------------------------------------------------
+   Same tokens as the campaign chart; only the node semantics differ. */
+#voyage-screen .voyage-inner { max-width: 520px; }
+#voyage-screen .voyage-hud {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 13px; font-weight: 800;
+}
+#voyage-screen .voyage-hud .vh-name { color: var(--gold); }
+#voyage-screen .voyage-hud .vh-stat {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+}
+#voyage-screen .voyage-chart {
+  position: relative;
+  aspect-ratio: 5 / 4;
+  margin: 0 0 8px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #3d93c7 0%, #1b6ca8 55%, #0f4c81 100%);
+  box-shadow: var(--shadow-soft), inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+/* The node fills were picked for the old dark chart -- restate them on the
+   light sea so they read as chips rather than holes. */
+#voyage-screen .voyage-node {
+  border-width: 3px;
+  background: rgba(244, 239, 230, 0.92);
+  box-shadow: var(--shadow-soft);
+}
+#voyage-screen .voyage-node.cleared { background: rgba(46, 158, 107, 0.85); }
+#voyage-screen .voyage-node.here { border-color: var(--gold); }
+#voyage-screen .voyage-lane { stroke: rgba(255, 255, 255, 0.4); }
+#voyage-screen .voyage-lane.sailed { stroke: var(--gold); }
+#voyage-screen .voyage-legend { color: #ffffff; }
+#voyage-screen .voyage-log { min-height: 20px; margin: 0 0 8px; font-size: 13px; font-weight: 700; color: #ffffff; }
+#voyage-screen .voyage-legend {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12px; font-weight: 700;
+}
+
+/* ---- Desktop --------------------------------------------------------
+   The shell screens are phone-shaped by design: a wider column would not
+   make an eight-button menu any more readable, so the desktop pass only
+   grows the chart-bearing screens and the type a little. */
+@media (min-width: 600px) {
+  #main-menu .menu-inner,
+  #mp-screen .menu-inner,
+  #profile-screen .menu-inner { max-width: 420px; }
+  #campaign-screen .campaign-inner,
+  #shop-screen .shop-inner,
+  #voyage-screen .voyage-inner { max-width: 560px; }
+  #main-menu .menu-title { font-size: 44px; }
+  #campaign-screen .map-island,
+  #campaign-screen .map-island .island-shape { width: 58px; height: 58px; }
+  #campaign-screen .map-island .island-num { font-size: 20px; }
+  #rules-modal .rules-matrix th,
+  #rules-modal .rules-matrix td { width: 34px; height: 34px; }
+}
+
+/* Short viewports (a 794px-tall desktop window, a landscape phone): tighten
+   the menu stack rather than let it overflow the fold. */
+@media (max-height: 820px) {
+  #main-menu .menu-title { font-size: 30px; }
+  #main-menu .menu-sub { font-size: 13px; margin-bottom: 12px; }
+  #main-menu .btn-primary { padding: 11px 18px; font-size: 16px; margin-bottom: 8px; }
+  #main-menu .btn-secondary { padding: 9px 16px; font-size: 14px; margin-bottom: 6px; }
+  #main-menu .shell-logo { width: 44px; height: 44px; }
+}
+
+/* ============================================================
+   P8 "Pause, feedback, telemetry".
+
+   Three new surfaces, and they deliberately do NOT all look the same:
+
+     * #pause-overlay opens over the live stage, so it takes the P4
+       round-end panel's dark gradient (render/screens.css) -- a cream
+       sheet dropped on a match would read as leaving the game.
+     * #feedback-modal and #telemetry-consent are shell surfaces (a form
+       and a policy dialog), so they take the P7 cream sheet used by
+       Settings and Rules.
+
+   Everything is px for the reason stated in this file's header: style.css
+   sets `html { font-size: 30px }`, so an inherited rem lands ~1.9x
+   oversized.
+   ============================================================ */
+
+/* ---- Pause overlay --------------------------------------------------
+   Fixed to the viewport rather than absolute inside .stage: on desktop the
+   stage is a phone-shaped 9:16 frame, and a pause menu that only dims the
+   frame while the page around it stays bright reads as a rendering bug. */
+.pause-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(4, 16, 28, 0.72);
+  backdrop-filter: blur(3px);
+}
+.pause-overlay.hidden { display: none; }
+
+.pause-panel {
+  width: min(300px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 16px 14px 14px;
+  text-align: center;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(16, 44, 70, 0.98), rgba(9, 26, 44, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+.pause-title {
+  margin: 0 0 12px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f2f7fc;
+}
+.pause-list, .pause-confirm { display: flex; flex-direction: column; gap: 8px; }
+.pause-overlay .pause-btn {
+  width: 100%;
+  margin: 0;
+  box-shadow: none;
+  padding: 11px 0;
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  color: #f2f7fc;
+  background: rgba(255, 255, 255, 0.12);
+}
+.pause-overlay .btn-primary.pause-btn {
+  color: #08202f;
+  background: var(--accent-warm);
+}
+.pause-overlay .pause-btn:active { filter: brightness(0.92); }
+/* Surrender and "leave the match" are the two entries that end something.
+   Tinted, not hidden: a red button the player has to read is the point. */
+.pause-overlay .pause-danger { color: #ffd8d3; background: rgba(229, 53, 43, 0.28); }
+/* P13 fix 2: the surrender confirm is the one pause button in --danger red;
+   "leave for the menu" is a plain confirm (render/pause.js drops the class
+   on it), so red keeps meaning "this is a defeat". */
+.pause-overlay .btn-primary.pause-danger {
+  color: #ffffff;
+  background: linear-gradient(180deg, var(--danger-hi, #ff6b5d), var(--danger, #e5352b));
+  box-shadow: 0 3px 0 var(--danger-lo, #8e140d), 0 0 14px rgba(229, 53, 43, 0.45);
+}
+
+.pause-q { margin: 0 0 4px; font-size: 16px; font-weight: 800; color: #f2f7fc; }
+.pause-note { margin: 0 0 8px; font-size: 12px; line-height: 1.4; color: #b9cddd; }
+
+/* ---- Feedback form --------------------------------------------------
+   Same cream sheet as the shell modals above; listed separately because
+   those rules are scoped by id. */
+#feedback-modal {
+  background: rgba(8, 32, 56, 0.72);
+  backdrop-filter: blur(3px);
+  padding: 12px;
+  z-index: 700;
+}
+#feedback-modal .modal-inner {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 14px 16px 18px;
+  font-size: 15px;
+  line-height: 1.4;
+  border: none;
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+#feedback-modal .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+#feedback-modal .modal-head h2 { margin: 0; font-size: 21px; font-weight: 900; color: var(--ink); }
+#feedback-modal .btn-icon {
+  flex: 0 0 auto;
+  width: 36px; height: 36px;
+  padding: 0;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.1);
+  border: none;
+  border-radius: 10px;
+}
+#feedback-modal .fb-hint { margin: 0 0 10px; font-size: 13px; line-height: 1.4; color: var(--ink-dim); }
+#feedback-modal .fb-label { display: block; margin: 8px 0 4px; font-size: 13px; font-weight: 800; color: var(--ink); }
+#feedback-modal .fb-text,
+#feedback-modal .fb-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 2px solid rgba(28, 36, 49, 0.18);
+  border-radius: var(--radius);
+}
+#feedback-modal .fb-text { resize: vertical; min-height: 90px; }
+#feedback-modal .fb-text:focus,
+#feedback-modal .fb-input:focus { outline: none; border-color: var(--sea-mid); }
+#feedback-modal .fb-count { margin-top: 3px; font-size: 11px; text-align: right; color: var(--ink-dim); }
+/* The status line is the ONLY place an error is ever shown (see the header
+   of render/feedback.js -- no alert() over a match). It keeps its height
+   when empty so the buttons do not jump when a message appears. */
+#feedback-modal .fb-status { min-height: 18px; margin: 8px 0 0; font-size: 13px; font-weight: 700; color: var(--ink-dim); }
+#feedback-modal .fb-status.is-error { color: #b3261e; }
+#feedback-modal .fb-status.is-ok { color: #1c7a4b; }
+#feedback-modal .modal-actions { display: flex; gap: 10px; margin-top: 12px; }
+/* style.css gives every .btn-secondary a `margin-top: 10px` and every
+   .btn-primary a pop-shadow -- in a flex row with its own gap that shows up
+   as two buttons at different heights. Reset both here. */
+#feedback-modal .modal-actions button {
+  flex: 1 1 0;
+  margin: 0;
+  box-shadow: none;
+  padding: 11px 0;
+  font-size: 15px;
+  font-weight: 800;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.1);
+}
+#feedback-modal .modal-actions .btn-primary { color: #08202f; background: var(--accent-warm); }
+#feedback-modal .modal-actions button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---- Telemetry consent ----------------------------------------------
+   First launch only, and above everything else: nothing is recorded until
+   it is answered, so it must not be reachable "around". */
+.consent-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(8, 32, 56, 0.82);
+  backdrop-filter: blur(3px);
+}
+.consent-overlay.hidden { display: none; }
+.consent-panel {
+  width: 100%;
+  max-width: 460px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  padding: 14px 16px 18px;
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-soft);
+}
+.consent-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.consent-head h2 { margin: 0; font-size: 21px; font-weight: 900; color: var(--ink); }
+.consent-lang { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--ink-dim); }
+.consent-panel p { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--ink); }
+.consent-panel .consent-dim { color: var(--ink-dim); }
+.consent-links, .settings-links { display: flex; gap: 14px; margin-top: 10px; }
+.consent-links a { font-size: 13px; font-weight: 700; color: #1b6ca8; }
+.consent-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.consent-actions button {
+  width: 100%;
+  margin: 0;
+  box-shadow: none;
+  padding: 11px 0;
+  font-size: 15px;
+  font-weight: 800;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.1);
+}
+.consent-actions .btn-primary { color: #08202f; background: var(--accent-warm); }
+/* P10 fix 4 took every <select> out of the Settings sheet (they are themed
+   segmented controls now, see below). The consent overlay keeps its native
+   one: it is shown once, before anything else exists, and a language picker
+   there wants to look like the OS's language picker. */
+.consent-lang select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 7px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 2px solid rgba(28, 36, 49, 0.18);
+  border-radius: 8px;
+}
+
+/* ---- Settings: feedback button and the Telemetry section ------------- */
+#settings-modal .settings-feedback {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+  background: rgba(27, 108, 168, 0.12);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+#settings-modal .telemetry-section { margin-top: 16px; border-top: 2px solid rgba(28, 36, 49, 0.12); padding-top: 12px; }
+#settings-modal .settings-subhead { margin: 0 0 4px; font-size: 16px; font-weight: 900; color: var(--ink); }
+#settings-modal .settings-note { margin: 0 0 8px; font-size: 12px; line-height: 1.4; color: var(--ink-dim); }
+#settings-modal .settings-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+/* The install id is the one string a player may be asked to quote back (the
+   privacy policy points at it for a deletion request), so it wraps rather
+   than being clipped. */
+#settings-modal .settings-id code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-dim);
+}
+#settings-modal .settings-mini {
+  margin: 0;
+  box-shadow: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.1);
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+}
+#settings-modal .settings-mini.btn-primary { color: #08202f; background: var(--accent-warm); }
+#settings-modal .settings-mini:disabled { opacity: 0.45; cursor: default; }
+/* Review mode's whole promise is that the player can see exactly what would
+   leave the device, so this is the literal JSON, scrollable and capped. */
+#settings-modal .telemetry-json {
+  max-height: 150px;
+  overflow: auto;
+  margin: 6px 0 8px;
+  padding: 8px;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.06);
+  border-radius: 8px;
+}
+
+
+/* ============================================================
+   P9 "Art-director pass".
+
+   fix 4 -- trading post, leaderboard and profile were light cream lists on
+   the sea: a settings page wearing a game's wallpaper. They become dark
+   nautical panels (deck-blue, a top-lit edge, a real shadow), the shop
+   grows 40px illustrated artifact art (render/shell.js's artifactArt),
+   prices become gold/crystal chips, and an item you cannot afford is dimmed
+   behind a lock rather than fitted with a grey "Not enough" bar.
+
+   fix 7 -- the main menu gets a hero backdrop, a two-line wordmark, one
+   large CTA and a 2x3 grid of icon tiles.
+
+   Loaded at the end of the file, so these rules beat the P7 ones above them
+   at equal specificity without having to invent any.
+   ============================================================ */
+
+/* ---- The shared dark panel ------------------------------------------ */
+/* One material, used by every panel on the three screens: deck-blue, a lit
+   top edge, a dark keyline and a cast shadow. Deliberately NOT a flat
+   rgba() over the sea -- that just tints the wallpaper and still reads as
+   a list. */
+#shop-screen .shop-item,
+#profile-screen .mp-card,
+#mp-screen .mp-card,
+#leaderboard-modal .lb-row {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 38%),
+    linear-gradient(180deg, #123b5e, #0b2137);
+  color: #e8f2fb;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.55),
+    0 4px 12px rgba(2, 12, 28, 0.42);
+}
+
+/* ---- Trading post --------------------------------------------------- */
+#shop-screen .shop-item {
+  grid-template-columns: 52px 1fr;
+  gap: 6px 12px;
+  padding: 12px;
+  border-radius: 14px;
+  text-align: left;
+}
+#shop-screen .shop-face {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background:
+    radial-gradient(70% 70% at 50% 25%, rgba(143, 205, 245, 0.28), rgba(143, 205, 245, 0) 70%),
+    linear-gradient(180deg, #0e2b45, #081a2b);
+  box-shadow:
+    inset 0 0 0 1px rgba(143, 205, 245, 0.28),
+    inset 0 2px 5px rgba(2, 12, 24, 0.55);
+  color: #8fcdf5;
+}
+#shop-screen .shop-face .shop-art { display: block; }
+#shop-screen .shop-item .version-title { font-size: 15px; font-weight: 900; color: #ffffff; }
+#shop-screen .shop-item .version-desc { font-size: 12.5px; color: rgba(214, 233, 248, 0.78); }
+
+/* Price chips: gold and crystal are told apart by colour AND by their own
+   metal, so the two currencies never have to be read to be counted. */
+#shop-screen .shop-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 10px 3px 7px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+#shop-screen .shop-price.is-gold {
+  color: #2d1f06;
+  background: linear-gradient(180deg, #ffd98a, #d99f25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 3px rgba(2, 12, 24, 0.45);
+}
+#shop-screen .shop-price.is-crystal {
+  color: #06212f;
+  background: linear-gradient(180deg, #b6ecff, #4fb3e0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 1px 3px rgba(2, 12, 24, 0.45);
+}
+#shop-screen .shop-price svg { color: currentColor; }
+
+#shop-screen .shop-item .shop-buy {
+  margin: 8px 0 0;
+  border-radius: 11px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+#shop-screen .shop-item .btn-primary.shop-buy {
+  background: linear-gradient(180deg, #ff9d4a, var(--accent-warm));
+  color: #ffffff;
+  box-shadow: 0 3px 0 #a6540f, 0 3px 10px rgba(2, 12, 28, 0.4);
+}
+
+/* Cannot afford it: the whole item recedes and the button becomes a locked
+   plate. The P7 build printed a full-width grey bar reading "Not enough",
+   which is the loudest element in a row you are not meant to act on.
+   ui.js owns that button's text, so the padlock is drawn here -- an inline
+   SVG data URI, which needs no new markup and no emoji. */
+#shop-screen .shop-item.disabled {
+  opacity: 1;
+  filter: saturate(0.45);
+}
+#shop-screen .shop-item.disabled .shop-face,
+#shop-screen .shop-item.disabled .shop-body { opacity: 0.55; }
+#shop-screen .shop-item.disabled .shop-price { box-shadow: none; }
+#shop-screen .shop-item .btn-secondary.shop-buy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(214, 233, 248, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  font-weight: 700;
+}
+#shop-screen .shop-item .btn-secondary.shop-buy::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 10V7a5 5 0 0 1 10 0v3' fill='none' stroke='%23a8c4dc' stroke-width='2.2' stroke-linecap='round'/%3E%3Crect x='5' y='10' width='14' height='10' rx='2.2' fill='%23a8c4dc'/%3E%3C/svg%3E");
+}
+
+/* Balance coins: same two metals as the price chips. */
+#shop-screen .coin {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03));
+  color: #eaf4fd;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 2px 6px rgba(2, 12, 28, 0.35);
+}
+#shop-screen .coin-gold { color: #ffd98a; }
+#shop-screen .coin-crystal { color: #b6ecff; }
+#shop-screen .coin-gold svg { color: #ffd98a; }
+#shop-screen .hold-chip {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+#shop-screen .hold-chip .shop-art { display: block; }
+
+/* ---- Leaderboard ---------------------------------------------------- */
+/* The modal body is light, so the rows carry their own dark panel and the
+   text on them is inverted. */
+#leaderboard-modal .lb-row {
+  padding: 9px 12px;
+  border-radius: 12px;
+}
+#leaderboard-modal .lb-rank { color: rgba(206, 228, 246, 0.8); }
+#leaderboard-modal .lb-name { color: #ffffff; }
+#leaderboard-modal .lb-score { color: #8fcdf5; }
+/* The three medal rows get a metal instead of a pale wash. */
+#leaderboard-modal .lb-row.rank-1 {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 40%),
+    linear-gradient(180deg, #6b5116, #3a2b09);
+}
+#leaderboard-modal .lb-row.rank-2 {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 40%),
+    linear-gradient(180deg, #4b5764, #2a333d);
+}
+#leaderboard-modal .lb-row.rank-3 {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 40%),
+    linear-gradient(180deg, #5c4020, #33220f);
+}
+#leaderboard-modal .lb-row.rank-1 .lb-rank { color: #ffd98a; }
+#leaderboard-modal .lb-row.rank-2 .lb-rank { color: #d8e4ef; }
+#leaderboard-modal .lb-row.rank-3 .lb-rank { color: #e0b263; }
+
+/* ---- Profile and online join ---------------------------------------- */
+/* Same panel. The inputs stay light -- a text field a player types into is
+   the one place a dark surface costs legibility for nothing. */
+#profile-screen .mp-card,
+#mp-screen .mp-card { border-radius: 16px; }
+#profile-screen .mp-label,
+#mp-screen .mp-label { color: rgba(176, 206, 232, 0.9); }
+#profile-screen .avatar-choice,
+#profile-screen .avatar-choice.picked {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+#profile-screen .avatar-choice.picked {
+  border-color: var(--gold);
+  background: rgba(242, 140, 40, 0.24);
+}
+#mp-screen .mp-hint { background: rgba(242, 140, 40, 0.2); color: #f4e6d5; }
+#mp-screen .mp-hint svg { color: #ffb066; }
+
+/* ============================================================
+   fix 7 -- the main menu.
+   ============================================================ */
+
+/* The hero backdrop: one inline SVG (sea, two islands, a ship silhouette,
+   a sun glow) painted behind the menu column, pinned to the top so the
+   wordmark sits in the sky and the tiles sit on the water. It is a
+   background-image data URI rather than a node, because #main-menu's
+   children are ui.js's and must not gain a sibling. */
+#main-menu {
+  position: relative;
+  /* Column at the TOP: .screen centres its single child, which on a 915px
+     phone parked the whole menu in the middle and left the hero art as a
+     band of empty water under it. */
+  justify-content: safe flex-start;
+
+  /* Four layers, front to back:
+       1. the silhouettes  -- two islands and a ship, an SVG with NO water
+          in it, sized by height with `auto` width so it keeps its aspect at
+          every viewport, and positioned so its baseline lands exactly on
+          the top of layer 2;
+       2. the water        -- a full-width CSS gradient, because a gradient
+          is the one thing that cannot be stretched out of shape by a wide
+          desktop window (the first cut put the water in the SVG with
+          preserveAspectRatio='none' and a 1512px screen pulled the islands
+          into 400px-wide hills);
+       3. the sun glow     -- top of the screen, above the wordmark;
+       4. the open sea.
+     The silhouette layer's offset is solved from the water layer's own
+     `40%`, which is what keeps the waterline and the island bases welded
+     together at any size. */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 130'%3E%3Cpath d='M18 130c14-34 30-50 50-50s36 16 50 50z' fill='%231b4433'/%3E%3Cpath d='M34 130c10-22 21-33 34-33s24 11 34 33z' fill='%232d6a4a'/%3E%3Cpath d='M62 97c0-9 2-14 6-17 4 3 6 8 6 17z' fill='%231b4433'/%3E%3Cpath d='M300 130c12-28 26-42 44-42s32 14 44 42z' fill='%231b4433'/%3E%3Cpath d='M314 130c9-18 18-27 30-27s21 9 30 27z' fill='%232d6a4a'/%3E%3Cpath d='M170 130l-10-16h100l-10 16z' fill='%23091624'/%3E%3Cpath d='M166 114v-12h88v12z' fill='%23091624'/%3E%3Cpath d='M196 102V86h18v16z' fill='%23091624'/%3E%3Cpath d='M204 86V64h4v22z' fill='%23091624'/%3E%3Cpath d='M208 66h14v6h-14z' fill='%23091624'/%3E%3Cpath d='M178 102V92h8v10z' fill='%23091624'/%3E%3Cpath d='M232 102V92h8v10z' fill='%23091624'/%3E%3C/svg%3E"),
+    /* Near swell. Waves are the one shape that does not mind being pulled
+       wide, so this layer alone can use preserveAspectRatio='none' and run
+       the full width at any viewport. */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 90' preserveAspectRatio='none'%3E%3Cpath d='M0 26c26 0 26 9 52 9s26-9 52-9 26 9 52 9 26-9 52-9 26 9 52 9 26-9 52-9 26 9 40 9v6H0z' fill='%230d3a5e'/%3E%3Cpath d='M0 56c30 0 30 10 60 10s30-10 60-10 30 10 60 10 30-10 60-10 30 10 60 10 30-10 60-10v24H0z' fill='%23092b46'/%3E%3C/svg%3E"),
+    linear-gradient(180deg,
+      /* The horizon needs a hard edge and a foam line, or the water simply
+         dissolves into --sea-gradient and the islands float in a void. */
+      rgba(196, 236, 255, 0.85) 0 1.4%,
+      #2f8fca 1.4%,
+      #1d6c9f 9%,
+      #0e4570 34%,
+      #092a45 68%,
+      #05192b 100%),
+    radial-gradient(44% 24% at 78% 11%, rgba(255, 233, 168, 0.45), rgba(255, 233, 168, 0) 70%),
+    var(--sea-gradient);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  /* `center bottom 40%` would NOT land the island bases on the waterline:
+     a percentage in the three-value form is measured against
+     (container height - image height), not against the container, so the
+     scene sat ~60px below the horizon. A length from the top is
+     unambiguous -- the water starts 60% down, so that is where the
+     silhouettes' bottom edge has to be. */
+  /* Both the water band and the silhouettes' offset are LENGTHS, and the
+     same length: a percentage in background-position is measured against
+     (container height - image height), never against the container, so
+     `calc(72% - 84px)` put the islands 60px above their own waterline.
+     `bottom 260px` means the island bases sit exactly on the top edge of a
+     260px-tall water band, at any viewport height.
+     260px also keeps the horizon below the menu column, which runs to about
+     half the height of a 915px phone. */
+  background-position:
+    center bottom 260px,
+    center bottom,
+    center bottom,
+    center top,
+    center;
+  background-size: auto 112px, 100% 92px, 100% 260px, 100% 100%, cover;
+}
+/* A scrim under the column so the tiles never fight the hero art. */
+#main-menu::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Darkest where the tiles are, clearing again over the water so the hero
+     art is still legible under them. */
+  background: linear-gradient(180deg,
+    rgba(6, 26, 45, 0.05) 0%,
+    rgba(6, 26, 45, 0.48) 34%,
+    rgba(6, 26, 45, 0.52) 62%,
+    rgba(6, 26, 45, 0.12) 100%);
+}
+#main-menu .menu-inner { position: relative; z-index: 1; padding-top: 42px; }
+
+/* ---- Wordmark -------------------------------------------------------- */
+/* Two lines, not one: "Sea Hunter" set across a phone's width as a single
+   line has to drop to 34px to fit, which is a heading. Stacked, each word
+   can be 46px, which is a logo. The wave rule under it is the P7 logo mark
+   turned into a rule, so the menu still carries the same wave. */
+#main-menu .menu-title {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 46px;
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: 0.005em;
+  text-transform: uppercase;
+  text-shadow:
+    0 2px 0 rgba(4, 22, 40, 0.5),
+    0 10px 26px rgba(2, 12, 28, 0.6);
+}
+/* A kicker over a word, not two words of equal weight: set at the same
+   size, "SEA" and "HUNTER" print at wildly different widths and the pair
+   reads as a heading that wrapped. */
+#main-menu .menu-title .wm-line { display: block; }
+#main-menu .menu-title .wm-line-1 {
+  font-size: 0.46em;
+  letter-spacing: 0.44em;
+  /* The tracking is applied to the right of the last letter too, which
+     pushes the word visibly off-centre at this size. */
+  text-indent: 0.44em;
+  color: #cfe6f8;
+}
+#main-menu .menu-title .wm-line-2 {
+  color: #ffffff;
+  letter-spacing: 0.02em;
+}
+#main-menu .menu-title .wm-rule {
+  display: block;
+  width: 196px;
+  height: 12px;
+  margin: 10px auto 2px;
+  background: no-repeat center / contain
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 168 10'%3E%3Cpath d='M2 6c10-8 20-8 30 0s20 8 30 0 20-8 30 0 20 8 30 0 20-8 24-4' fill='none' stroke='%23f28c28' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+#main-menu .menu-sub {
+  margin: 0 0 18px;
+  color: rgba(217, 235, 250, 0.82);
+  font-size: 13px;
+}
+
+/* ---- One large primary CTA ------------------------------------------ */
+#main-menu .btn-primary {
+  margin: 0 0 16px;
+  padding: 19px 18px;
+  font-size: 21px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffa85c, var(--accent-warm));
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.45),
+    0 6px 0 #a6540f,
+    0 12px 22px rgba(2, 12, 28, 0.5);
+}
+#main-menu .btn-primary:active { transform: translateY(5px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35); }
+
+/* ---- Secondary actions: a 2x3 grid of icon tiles -------------------- */
+/* Six actions, six tiles. The seventh link (back to the hub) is not an
+   action inside the game and stays a text link under the grid, so the grid
+   is not an uneven 2x3-and-a-half. */
+#main-menu .menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin: 0 0 14px;
+}
+#main-menu .menu-grid .btn-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  margin: 0;
+  min-height: 78px;
+  padding: 11px 6px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #eaf4fd;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, #12395c, #0b2137);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.5),
+    0 4px 0 rgba(3, 17, 31, 0.75);
+}
+#main-menu .menu-grid .btn-secondary:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 0 0 1px rgba(2, 12, 24, 0.5);
+}
+#main-menu .menu-tile-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #8fcdf5;
+}
+#main-menu .menu-tile-icon svg { width: 26px; height: 26px; display: block; }
+#main-menu .menu-tile-label { line-height: 1.1; text-align: center; }
+/* The profile tile carries the player's avatar in place of a glyph, and its
+   label is the handle -- which can be long, so it wraps rather than clips. */
+#main-menu #btn-profile .menu-avatar { margin: 0; display: inline-flex; }
+#main-menu #btn-profile .avatar-disc { width: 30px; height: 30px; }
+#main-menu #menu-handle { overflow-wrap: anywhere; }
+
+/* The hub link: a quiet text link, not a seventh button. */
+#main-menu .menu-hub-link {
+  display: inline-block;
+  width: auto;
+  margin: 2px auto 0;
+  padding: 8px 14px;
+  background: none;
+  box-shadow: none;
+  color: rgba(198, 222, 242, 0.85);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+#main-menu .menu-hub-link:active { transform: none; box-shadow: none; }
+
+/* Desktop: the hero has more room, so the wordmark grows and the tiles
+   stay square rather than stretching to a 460px column. */
+@media (min-width: 900px) and (min-height: 600px) {
+  #main-menu .menu-inner { padding-top: 48px; }
+  #main-menu .menu-title { font-size: 58px; }
+  #main-menu .menu-title .wm-rule { width: 210px; }
+  /* A wide window has no more vertical room than a phone, so the water
+     rises rather than the islands growing. */
+  #main-menu {
+    background-position:
+      center bottom 210px, center bottom, center bottom, center top, center;
+    background-size: auto 128px, 100% 110px, 100% 210px, 100% 100%, cover;
+  }
+}
+
+
+/* ---- fix 4, second pass --------------------------------------------- */
+/* The leaderboard ROWS were darkened above, but the sheet they sit on was
+   still the P7 cream panel -- and with an empty board (a fresh device, or
+   the offline Global tab) the whole screen was cream. The modal itself
+   becomes the dark nautical panel. Scoped to #leaderboard-modal only:
+   #rules-modal and #settings-modal share those P7 selectors and are not in
+   this pass's scope. */
+#leaderboard-modal .modal-inner {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 30%),
+    linear-gradient(180deg, #0f3050, #08192a);
+  color: #e8f2fb;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 18px 44px rgba(2, 10, 22, 0.6);
+}
+#leaderboard-modal .modal-head {
+  background: linear-gradient(180deg, #0f3050, #0d2a45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+#leaderboard-modal .modal-head h2 { color: #ffffff; }
+#leaderboard-modal .btn-icon {
+  color: #dbeaf7;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+#leaderboard-modal .leaderboard-tabs .btn-secondary {
+  color: #cfe3f5;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+/* The empty state has to look like a deliberate "nothing here yet", not
+   like a panel that failed to load. */
+#leaderboard-modal .rules-note {
+  color: rgba(198, 222, 242, 0.7);
+  padding: 22px 10px;
+  font-weight: 600;
+}
+
+/* Secondary buttons on the three restyled screens. Leaving them cream made
+   "Back" the second-loudest element on a screen that is otherwise dark. */
+#shop-screen .btn-secondary,
+#profile-screen .btn-secondary,
+#mp-screen .btn-secondary {
+  color: #e8f2fb;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0) 45%),
+    linear-gradient(180deg, #12395c, #0b2137);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.5),
+    0 3px 0 rgba(3, 17, 31, 0.7);
+}
+/* ...but not the shop's own "Not enough" plate, which has its own locked
+   treatment above and must not be promoted back into a button. */
+#shop-screen .shop-item .btn-secondary.shop-buy {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* Desaturating an unaffordable row to 0.45 also killed the crystal chip,
+   which is the one thing on it the player still needs to read. */
+#shop-screen .shop-item.disabled { filter: saturate(0.62); }
+#shop-screen .shop-item.disabled .shop-price { opacity: 0.9; filter: none; }
+
+
+/* ============================================================
+   P10 fix 4 -- the Settings sheet.
+
+   P9 left this screen as: three themed toggles, then a hard rule, then a
+   wall of telemetry in browser-default chrome -- two native <select>s, a
+   bare id string and two blue underlined links. Four things change, and
+   none of them is a new control invented for this one screen.
+   ============================================================ */
+
+/* ---- the "Advanced" disclosure -------------------------------------
+   Collapsed by default. Telemetry, the install id and the legal links are
+   all things a player goes looking for on purpose, so they cost a tap; the
+   three toggles above are what the sheet is FOR, so they stay in view. */
+#settings-modal .settings-advanced { margin-top: 14px; }
+#settings-modal .settings-disclosure {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: var(--radius, 12px);
+  background: rgba(28, 36, 49, 0.08);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+/* Safari still paints the default triangle through `list-style: none`. */
+#settings-modal .settings-disclosure::-webkit-details-marker { display: none; }
+#settings-modal .settings-disclosure-label {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ink);
+}
+#settings-modal .settings-disclosure-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+/* The chevron. A pseudo-element rather than the native marker so it can be
+   the same ink as the label and rotate when the block opens. */
+#settings-modal .settings-disclosure::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  align-self: center;
+  border-right: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 0.18s ease;
+}
+#settings-modal .settings-advanced[open] .settings-disclosure::after {
+  transform: rotate(-135deg) translate(-1px, -1px);
+}
+#settings-modal .settings-advanced-body { padding: 12px 2px 0; }
+/* The section is now a disclosure, so it supplies its own top edge. */
+#settings-modal .telemetry-section { margin-top: 0; border-top: none; padding-top: 0; }
+
+/* ---- the segmented control ------------------------------------------
+   One themed group replacing both native <select>s. A row of real
+   <button>s: keyboard-reachable, each stating its own pressed state, and
+   with every option visible rather than hidden behind an OS sheet -- with
+   three options there was never anything to hide. */
+#settings-modal .seg {
+  display: flex;
+  flex: 0 0 auto;
+  padding: 2px;
+  border-radius: 10px;
+  background: rgba(28, 36, 49, 0.12);
+  box-shadow: inset 0 1px 2px rgba(28, 36, 49, 0.18);
+}
+#settings-modal .seg-btn {
+  margin: 0;
+  padding: 6px 11px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+#settings-modal .seg-btn.is-on {
+  color: #08202f;
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgba(28, 36, 49, 0.25);
+}
+/* Two lines on a phone: "Consent language" plus three options does not fit
+   one 380px row, and wrapping the label is worse than stacking. */
+#settings-modal .settings-field-stack {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+/* ---- the install id chip --------------------------------------------
+   The one string a player may be asked to quote back (the privacy policy
+   points at it for a deletion request), so it is set as a monospace chip:
+   a value to be read character by character, not a sentence. */
+#settings-modal .settings-id code.settings-chip {
+  flex: 1 1 100%;
+  order: 3;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  background: rgba(28, 36, 49, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(28, 36, 49, 0.14);
+  overflow-wrap: anywhere;
+}
+#settings-modal .settings-id { flex-wrap: wrap; row-gap: 6px; }
+
+/* ---- legal links as buttons ------------------------------------------
+   Blue underlined text on a game's settings sheet reads as a web page that
+   happened to open inside the app. Same box as .settings-mini, so they sit
+   in the same family as Copy / Send now / Discard. */
+#settings-modal .settings-links { gap: 8px; margin-top: 12px; }
+#settings-modal .settings-link-btn {
+  flex: 1 1 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+  color: var(--ink);
+  background: rgba(27, 108, 168, 0.14);
+}
+
+/* ============================================================
+   P12 "Living board", part 5 -- Trading Post polish.
+
+   Three things, and all three exist because the shelf up to P10 was a
+   list of rows that all looked the same, bought instantly on one tap and
+   then said nothing about it:
+
+     1. a rarity glow per PRICE BAND (ui.js's priceBand() puts the class
+        on the row -- the band is derived from economy.js's price table,
+        never from a second rarity field that could disagree with it);
+     2. a purchase flourish -- the row pulses and a coin chip flies to the
+        wallet, which bumps as it lands;
+     3. an inline confirm step, in the row, in place of the button.
+
+   Scoped to #shop-screen, like the rest of this file's shop block.
+   ============================================================ */
+
+/* ---- 1. rarity glow -------------------------------------------------- */
+/* One accent variable per band, used by the left edge, the frame tint and
+   the resting glow. The ramp is deliberately narrow at the bottom and wide
+   at the top: a 40-gold Spyglass should look like stock, and a 3-crystal
+   Lucky Compass -- payable only in the currency a first campaign clear
+   mints -- should look like the reason you cleared the island. */
+#shop-screen .shop-item { --band: 150, 175, 196; --band-glow: 0; }
+#shop-screen .shop-item.band-common { --band: 150, 175, 196; --band-glow: 0.00; }
+#shop-screen .shop-item.band-fine   { --band: 110, 196, 168; --band-glow: 0.16; }
+#shop-screen .shop-item.band-rare   { --band: 118, 168, 244; --band-glow: 0.26; }
+#shop-screen .shop-item.band-legend { --band: 246, 193, 119; --band-glow: 0.38; }
+
+#shop-screen .shop-item {
+  position: relative;
+  border-color: rgba(var(--band), calc(0.22 + var(--band-glow)));
+  box-shadow:
+    0 6px 16px rgba(2, 12, 26, 0.38),
+    0 0 18px rgba(var(--band), var(--band-glow));
+}
+/* The band also reads as a stripe down the leading edge, so the shelf can
+   be scanned without comparing glows against each other. */
+#shop-screen .shop-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgba(var(--band), calc(0.35 + var(--band-glow) * 1.4));
+  pointer-events: none;
+}
+/* The top shelf, and only the top shelf, breathes. Two bands doing it would
+   be decoration; one doing it is a signal. */
+@media (prefers-reduced-motion: no-preference) {
+  #shop-screen .shop-item.band-legend {
+    animation: shop-legend-glow 3.4s ease-in-out infinite alternate;
+  }
+}
+@keyframes shop-legend-glow {
+  from { box-shadow: 0 6px 16px rgba(2, 12, 26, 0.38), 0 0 14px rgba(246, 193, 119, 0.24); }
+  to   { box-shadow: 0 6px 16px rgba(2, 12, 26, 0.38), 0 0 26px rgba(246, 193, 119, 0.52); }
+}
+/* An item you cannot afford keeps its band -- knowing what it IS is exactly
+   what makes it worth saving for -- but stops advertising. */
+#shop-screen .shop-item.disabled { --band-glow: 0.04; animation: none; }
+
+/* ---- 2. the purchase flourish ---------------------------------------- */
+/* ui.js sets `.just-bought` on the freshly rendered row for the item that
+   was bought, so the pulse plays on the row that survives the repaint
+   rather than on the one being thrown away. */
+#shop-screen .shop-item.just-bought {
+  animation: shop-bought-pulse 620ms cubic-bezier(0.25, 0.9, 0.35, 1);
+}
+@keyframes shop-bought-pulse {
+  0%   { transform: scale(1); box-shadow: 0 6px 16px rgba(2, 12, 26, 0.38), 0 0 0 rgba(255, 228, 168, 0); }
+  30%  { transform: scale(1.025); box-shadow: 0 8px 22px rgba(2, 12, 26, 0.44), 0 0 28px rgba(255, 228, 168, 0.75); }
+  100% { transform: scale(1); box-shadow: 0 6px 16px rgba(2, 12, 26, 0.38), 0 0 0 rgba(255, 228, 168, 0); }
+}
+
+/* The coin. `position: fixed` because ui.js places it from a
+   getBoundingClientRect(), which is already in viewport coordinates, and
+   because the chip has to survive #shop-items being rewritten on the same
+   tick -- it is parented to #shop-screen, not to the shelf. The travel arc
+   itself is a WAAPI keyframe in ui.js (it is measured, so it cannot be
+   written here). */
+#shop-screen .shop-coin-chip {
+  position: fixed;
+  z-index: 600;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 34% 28%,
+    #fffbe8 0 22%,
+    #ffcf3f 52%,
+    #c07a0c 100%);
+  box-shadow:
+    0 0 12px rgba(255, 196, 70, 0.95),
+    0 0 0 1px rgba(92, 56, 6, 0.7),
+    inset 0 -3px 4px rgba(120, 72, 8, 0.6);
+}
+
+/* The wallet acknowledges the arrival. Without this the chip flies into a
+   number that was already correct before it set off, and the flight reads
+   as unrelated to the balance. */
+#shop-screen .shop-balance.wallet-bump {
+  animation: shop-wallet-bump 400ms cubic-bezier(0.25, 0.9, 0.35, 1);
+}
+@keyframes shop-wallet-bump {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.09); }
+  100% { transform: scale(1); }
+}
+
+/* ---- 3. the inline confirm ------------------------------------------- */
+/* ui.js swaps the Buy button for this pair in place: no modal, no
+   re-render, nothing reflowed but the one row. It occupies the button's
+   own grid/flex position, so the shelf does not jump as it appears. */
+#shop-screen .shop-confirm {
+  /* The row is a grid with areas 'face body' / 'buy buy'; the pair takes
+     the button's own area, so nothing above it moves when it appears. */
+  grid-area: buy;
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  animation: shop-confirm-in 180ms cubic-bezier(0.25, 0.9, 0.35, 1);
+}
+#shop-screen .shop-confirm button {
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+#shop-screen .shop-confirm .shop-confirm-yes {
+  flex: 1 1 auto;
+  background: var(--accent-warm, #f28c28);
+  color: #ffffff;
+  border: none;
+}
+#shop-screen .shop-confirm .shop-confirm-no {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: rgba(226, 240, 252, 0.88);
+}
+@keyframes shop-confirm-in {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #shop-screen .shop-item.just-bought,
+  #shop-screen .shop-item.band-legend,
+  #shop-screen .shop-confirm,
+  #shop-screen .shop-balance.wallet-bump { animation: none; }
+  /* ui.js skips the coin flight entirely under reduced motion; this is the
+     belt to that braces. */
+  #shop-screen .shop-coin-chip { display: none; }
+}
+
+
+/* ---- P13 fix 4: illustrated item art ------------------------------------
+   render/shell.js's itemImg() -- artifacts, coins, rank cups and avatars as
+   <img> of render/art/items/*.svg. A replaced element, so it needs only
+   to be a non-shrinking block of its declared size; the lighting is in the
+   file. The old `.coin svg` / `.lb-rank` colour rules above no longer
+   reach anything for these and are left for the glyph fallback. */
+.item-art {
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+#shop-screen .shop-price .item-art { margin-right: 2px; }
+.lb-rank .item-art { margin: -2px 0; }
+/* The disc is the avatar's colour; a faint inner shade on its lower right,
+   matching the key light, makes it a token rather than a flat dot. */
+.avatar-disc { box-shadow: inset -2px -2px 4px rgba(0, 0, 0, 0.22), inset 1px 1px 2px rgba(255, 255, 255, 0.25); }

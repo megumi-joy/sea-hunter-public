@@ -1,0 +1,128 @@
+/* Sea Hunter -- phase P13 "Hero card moments". Paint for render/hero.js.
+ *
+ * The overlay is `position: absolute; inset: 0` inside whatever host
+ * hero.js mounts it on: `.stage` on the match (overflow: hidden, so it stays
+ * inside the phone-shaped frame on desktop) or the game-over modal for the
+ * victory sequence (itself `position: fixed; inset: 0`). The card's size is
+ * set by hero.js as `--slot-w` in px -- 60% of the stage width -- so every
+ * em inside render/cards.css scales with it and nothing here sizes a card.
+ *
+ * z-index 80: above the fx layer (60), the hand and controls (<= 64) and the
+ * P13 time-of-day wash (20); below the modals (500) when on the stage. On
+ * the modal it only has to beat `.modal-inner` (1).
+ */
+
+.hero-view {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.hero-view.hero-interactive { pointer-events: auto; cursor: pointer; }
+.hero-view.hero-fixed { z-index: 5; }
+
+/* The dim. A flat scrim plus a soft pool of light behind the card, so the
+   card reads as lifted INTO the light rather than as a sticker on grey. No
+   backdrop-filter: a full-stage blur on a phone is the most expensive thing
+   this build could do, and the victory sequence runs it five times. */
+.hero-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 46% at 50% 44%, rgba(120, 170, 220, 0.22), rgba(120, 170, 220, 0) 70%),
+    rgba(2, 10, 20, 0.74);
+}
+.hero-moment-victory .hero-backdrop,
+.hero-moment-capture .hero-backdrop {
+  background:
+    radial-gradient(60% 46% at 50% 44%, rgba(255, 214, 130, 0.30), rgba(255, 214, 130, 0) 70%),
+    rgba(12, 8, 2, 0.70);
+}
+.hero-moment-capture.hero-theirs .hero-backdrop {
+  background:
+    radial-gradient(60% 46% at 50% 44%, rgba(229, 53, 43, 0.22), rgba(229, 53, 43, 0) 70%),
+    rgba(10, 4, 6, 0.72);
+}
+
+.hero-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 92%;
+}
+
+/* The card itself: a big, lifted, top-left-lit object. The shadow falls
+   down and to the right, the way the P13 art and frames are lit. */
+.hero-view .card.unit-card.hero-card,
+#game-screen .hero-view .card.unit-card.hero-card {
+  /* stage.css sets `#game-screen .card { height: var(--slot-h) }` for the
+     board slots; that id-scoped rule outranks cards.css and squashed the hero
+     card to slot height (seen on prod 2026-09-16). Restore the 3:4 card. */
+  height: calc(var(--uc-w) * 4 / 3);
+  box-shadow:
+    8px 18px 34px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(3, 14, 26, 0.55);
+  transform: none;
+  animation: none;
+  cursor: inherit;
+}
+/* At hero size there is room for the full name; the short one is a
+   fan-size compromise. */
+.hero-view .card.unit-card.hero-card .uc-name { display: none; }
+.hero-view .card.unit-card.hero-card .uc-name-full { display: block; }
+
+.hero-view .ic-card.hero-island {
+  position: relative;
+  border-width: 3px;
+  border-radius: 12px;
+  box-shadow: 8px 16px 30px rgba(0, 0, 0, 0.6);
+}
+.hero-view .ic-card.hero-island .ic-name { font-size: 15px; }
+.hero-moment-capture .ic-card.hero-island { border-color: var(--gold, #f4c24f); box-shadow: 8px 16px 30px rgba(0, 0, 0, 0.6), 0 0 26px rgba(244, 194, 79, 0.55); }
+.hero-moment-capture.hero-theirs .ic-card.hero-island { border-color: var(--danger, #e5352b); box-shadow: 8px 16px 30px rgba(0, 0, 0, 0.6), 0 0 26px rgba(229, 53, 43, 0.45); }
+
+.hero-panel {
+  width: 100%;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 8px 12px 9px;
+  border-radius: 12px;
+  background: rgba(10, 28, 46, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #e6f0f8;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.hero-title { font-size: 17px; font-weight: 900; letter-spacing: 0.02em; color: #ffffff; }
+.hero-meta { margin-top: 2px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.hero-strength { color: #bfe3f7; }
+.hero-capture { color: var(--gold, #f4c24f); }
+.hero-capture-theirs { color: var(--danger-hi, #ff6b5d); }
+.hero-ability { margin-top: 5px; color: #d3e2ee; }
+.hero-ability-name { font-weight: 900; color: #ffffff; }
+.hero-hint { margin-top: 6px; font-size: 11px; color: rgba(206, 228, 246, 0.6); }
+
+/* Entrance: the card rises and settles, the scrim fades. Transform and
+   opacity only. Under reduced motion it is simply there. */
+@media (prefers-reduced-motion: no-preference) {
+  .hero-view .hero-backdrop { animation: hero-dim 180ms ease-out both; }
+  .hero-view .hero-frame { animation: hero-rise 260ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+  @keyframes hero-dim { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes hero-rise {
+    from { opacity: 0; transform: translateY(18px) scale(0.86); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+/* Any card that can be held: no iOS callout sheet, no text selection. */
+#game-screen .card.unit-card,
+#game-screen .island-card { -webkit-touch-callout: none; }

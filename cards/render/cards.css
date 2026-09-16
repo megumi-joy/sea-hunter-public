@@ -1,0 +1,723 @@
+/* Unit card visuals -- phase P1 "Cards".
+ *
+ * Loaded AFTER style.css. Every selector is scoped to `.card.unit-card` (two
+ * classes) so it outranks style.css's single-class `.card` rules regardless of
+ * link order, and so island cards / artifact cards / the #active-island card
+ * -- which are also `.card` but never get `.unit-card` -- keep their existing
+ * look. Nothing here touches layout (rows, zones, board, slots): that is the
+ * scene pass's file.
+ *
+ * Size comes from --slot-w, set by the layout on any ancestor. The 84px
+ * default reproduces style.css's current 84x112 card exactly, so dropping this
+ * file in changes no geometry until the layout starts driving --slot-w.
+ */
+
+.card.unit-card {
+  --uc-w: var(--slot-w, 84px);
+  --uc-ink: #0b1b2d;
+  /* Outer rope-or-metal border (light top, dark bottom) ... */
+  --uc-frame: #56789e;
+  --uc-frame-lo: #1d3550;
+  /* ... the nameplate bar's role colour band ... */
+  --uc-band: #1b3a5e;
+  --uc-band-lo: #0e2440;
+  /* ... and the shield badge. */
+  --uc-accent: #7cc4f0;
+  --uc-accent-lo: #3f92c8;
+  /* Where the SVG horizon lands inside the art window. The art is 4:3
+     (viewBox 60x45) sliced into a ~1.25:1 window, so it is scaled to the
+     window height and the horizon at y=26 lands at 26/45 = 57.8%. The CSS
+     sky gradient below stops exactly there, so a rounding difference shows
+     a sliver more sky rather than a seam. */
+  --uc-horizon: 58%;
+
+  width: var(--uc-w);
+  height: calc(var(--uc-w) * 4 / 3);
+  /* One type scale for the whole card; every inner size is an em of this. */
+  font-size: calc(var(--uc-w) * 0.115);
+  border-radius: 9px;
+  padding: 0;
+  border: none;
+  /* The 3px frame is the root's own background showing around .uc-inner
+     (inset 3px) -- a real `border` would sit outside the inner's square
+     corners and print a hairline seam at the radius. Two layers: a top-lit
+     sheen over the flat role gradient, which is what makes the border read
+     as turned metal rather than as a coloured line. */
+  /* The sheen is deliberately weak. At 0.55 white over the frame colour the
+     border printed as a plain white card mount at every role -- the tint has
+     to survive the highlight or the frame stops carrying any information. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04) 30%, rgba(0, 0, 0, 0.38) 100%),
+    linear-gradient(180deg, var(--uc-frame), var(--uc-frame-lo));
+  /* Outer contact shadow plus a dark keyline, so a card on the light sea of
+     the player half still has an edge. */
+  box-shadow: 0 2px 5px rgba(2, 14, 28, 0.55), inset 0 0 0 1px rgba(3, 14, 26, 0.55);
+  display: block;
+  position: relative;
+  overflow: visible;
+  user-select: none;
+}
+
+/* Role tints. Frame plus nameplate colour is the fastest "what class of
+   thing is this" signal on a 90px-wide card, ahead of the illustration.
+   P9 pinned the band to the four named colours: ships navy, air sky-blue,
+   shore sand, mine/sub charcoal. */
+.card.unit-card.role-ship {
+  --uc-frame: #35608c; --uc-frame-lo: #132539;
+  --uc-band: #1b3a5e;  --uc-band-lo: #0d2036;
+  --uc-accent: #8fcdf5; --uc-accent-lo: #3f92c8;
+}
+.card.unit-card.role-air {
+  --uc-frame: #3f93c4; --uc-frame-lo: #164a6f;
+  --uc-band: #2a79ab;  --uc-band-lo: #15567f;
+  --uc-accent: #d6f1ff; --uc-accent-lo: #79c2e8;
+}
+.card.unit-card.role-shore {
+  --uc-frame: #a8894e; --uc-frame-lo: #4d3d1f;
+  --uc-band: #8a7040;  --uc-band-lo: #57451f;
+  --uc-accent: #f6d58d; --uc-accent-lo: #c09437;
+}
+.card.unit-card.role-depth {
+  --uc-frame: #5b6570; --uc-frame-lo: #1c2129;
+  --uc-band: #3a424d;  --uc-band-lo: #1e242b;
+  --uc-accent: #c2d0dc; --uc-accent-lo: #7d8d9c;
+}
+
+/* A face-down card must NOT leak its role: the role tint above is applied on
+   both faces (decorate() runs for both, because flipCard() swaps innerHTML
+   only), so the back overrides it back to a neutral navy. Same class count as
+   the .role-* rules and declared after them, so it wins on order. */
+.card.unit-card.face-down {
+  --uc-frame: #37556f;
+  --uc-frame-lo: #101f2e;
+  --uc-band: #14293e;
+  --uc-band-lo: #0a1626;
+  --uc-accent: #3d7fb3;
+  --uc-accent-lo: #245a85;
+}
+
+/* Inset 3px = the frame width. The lighter inner bevel is a 1px inset ring
+   on this element, so it sits between the frame and the art window rather
+   than on either of them. Clipping lives here, not on the root, so
+   .selected's lift/glow is not cut off. */
+.card.unit-card .uc-inner {
+  position: absolute;
+  inset: 3px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--uc-ink);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.30),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Recessed art window -------------------------------------------- */
+/* The background here is the sky: art.js stopped painting one, because a
+   flat rect cannot carry a gradient and an SVG gradient would need
+   <defs>+id, which collide across the 14 inlined copies of one art string.
+   The sea tones below --uc-horizon are a fallback only -- the SVG paints
+   opaque sea over them. */
+.card.unit-card .uc-art {
+  /* 62%, not more: the art is 4:3 and this window is ~1.15:1, so every
+     extra percent of height is another slice of the illustration's left and
+     right edges thrown away. At 62% about 7% comes off each side, which the
+     centred subjects in render/art.js can spare. */
+  flex: 0 0 62%;
+  position: relative;
+  margin: 2px 2px 0;
+  border-radius: 4px;
+  overflow: hidden;
+  /* Three layers, far to near:
+     - the sun, high and to the LEFT (P13: the one key light every
+       illustration in render/art/ is lit from);
+     - P10: a wide low glow hugging the horizon. Air near the waterline is
+       hazier and warmer than air overhead, and painting that is what stops
+       the sky reading as a flat blue card stock behind a cut-out boat. It
+       is a separate radial rather than another linear stop so it falls off
+       towards the two upper corners as well as upwards;
+     - the sky/sea ramp itself, warming to near-white just above
+       --uc-horizon and dropping straight to sea tone at it. */
+  background:
+    radial-gradient(52% 40% at 20% 14%, rgba(255, 244, 205, 0.9), rgba(255, 244, 205, 0) 72%),
+    radial-gradient(86% 34% at 50% var(--uc-horizon), rgba(255, 238, 198, 0.85), rgba(255, 238, 198, 0) 70%),
+    linear-gradient(180deg, #8ed2f0 0%, #c8ecff 38%, #e6f4ff calc(var(--uc-horizon) - 7%), #fdf1d6 var(--uc-horizon), #1c6fa8 var(--uc-horizon), #14568a 100%);
+}
+.card.unit-card .uc-svg { display: block; width: 100%; height: 100%; }
+
+/* ---- P11 illustrated art -------------------------------------------
+   render/art/<id>.svg painted over the inline placeholder. The <img> is
+   absolutely positioned so it never changes the window's box: if the file
+   is slow, missing or switched off, the art.js SVG underneath is already
+   filling exactly this rect and nothing moves when the image lands.
+   object-fit: cover matches the SVG's preserveAspectRatio="slice", so both
+   crop identically and the swap is invisible at the edges. */
+.card.unit-card .uc-img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* The recess itself. A pseudo-element rather than a box-shadow on .uc-art:
+   an inset shadow paints above the background but BELOW child content, and
+   the art <svg> is a child, so it would hide the recess completely. */
+.card.unit-card .uc-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Above .uc-img (z-index 1), or the recess and the vignette would be
+     painted UNDER the illustration and the window would lose its cut-in
+     edge the moment the art loaded. */
+  z-index: 2;
+  /* P11: a vignette inside the art window. The painted art now runs corner
+     to corner, and a full-bleed illustration inside a bright frame reads as
+     a sticker; darkening the four corners by a few percent pushes the
+     subject forward and settles the art into the card. A background rather
+     than a fourth inset shadow, so the falloff is elliptical (following the
+     window) instead of rectangular. */
+  background:
+    radial-gradient(118% 108% at 50% 42%,
+      rgba(2, 12, 24, 0) 52%,
+      rgba(2, 12, 24, 0.16) 78%,
+      rgba(2, 12, 24, 0.36) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(2, 12, 24, 0.6),
+    inset 0 3px 6px rgba(2, 12, 24, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* Face-down: art window is the whole card, no nameplate. */
+.card.unit-card .uc-inner-back .uc-art { flex: 1 1 auto; margin: 2px; }
+
+/* ---- Strength badge (shield) ---------------------------------------- */
+/* clip-path gives the shield silhouette; the drop-shadow FILTER (not a
+   box-shadow, which would be clipped away with the corners) is what lifts
+   it off the art. */
+.card.unit-card .uc-badge {
+  position: absolute;
+  top: 0.16em;
+  left: 0.16em;
+  z-index: 3;
+  width: 1.7em;
+  height: 1.95em;
+  box-sizing: border-box;
+  padding-top: 0.14em;
+  clip-path: polygon(0 0, 100% 0, 100% 56%, 50% 100%, 0 56%);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0) 46%),
+    linear-gradient(180deg, var(--uc-accent), var(--uc-accent-lo));
+  /* Two shadows: a tight dark rim so a pale badge does not dissolve into
+     the pale sky behind it, then the cast shadow that lifts it. */
+  filter:
+    drop-shadow(0 0 0.8px rgba(2, 12, 24, 0.95))
+    drop-shadow(0 1px 1.5px rgba(2, 12, 24, 0.7));
+  color: var(--uc-ink);
+  font-size: 1em;
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+}
+/* The digit is its own box so it sits in the shield's flat upper half
+   rather than centred over the point. */
+.card.unit-card .uc-badge > span { display: block; position: relative; z-index: 2; }
+
+/* The anchor watermark inside the shield (P11). Low contrast on purpose --
+   it is what makes the badge an object rather than a coloured polygon, and
+   it must never compete with the digit sitting on top of it. */
+.card.unit-card .uc-badge-mark {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 1.15em;
+  height: 1.15em;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  color: var(--uc-ink);
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+/* ---- Nameplate bar --------------------------------------------------- */
+.card.unit-card .uc-band {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05em;
+  padding: 0.12em 0.18em;
+  margin: 2px;
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(180deg, var(--uc-band), var(--uc-band-lo));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.35);
+  text-align: center;
+}
+
+/* ---- P11 name line: role glyph + name ------------------------------- */
+/* One flex row, so the glyph sits beside whichever of the two name spans is
+   currently shown instead of being a third thing the nameplate has to
+   stack. */
+.card.unit-card .uc-nameline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.22em;
+  min-width: 0;
+  max-width: 100%;
+}
+.card.unit-card .uc-glyph {
+  flex: 0 0 auto;
+  /* Floor at 7px: the glyph carries the role read at fan size, and below
+     7px the sub and the mine stop being distinguishable. */
+  width: max(7px, 0.66em);
+  height: max(7px, 0.66em);
+  color: var(--uc-accent);
+  /* A dark rim so a pale accent glyph survives the nameplate gradient. */
+  filter: drop-shadow(0 0.5px 0 rgba(2, 12, 24, 0.7));
+}
+/* The hand-overlap rule below left-aligns the nameplate; the glyph then
+   leads the row rather than sitting centred with it. */
+#game-screen #player-hand.hand-overlap .card.unit-card .uc-nameline {
+  justify-content: flex-start;
+}
+
+.card.unit-card .uc-name,
+.card.unit-card .uc-name-full {
+  /* 8px floor: fix 3's requirement is that nothing ellipsizes at 412px, and
+     the short names in render/cards.js's NAME_SHORT are chosen to fit the
+     nameplate at this size. No text-overflow anywhere in this file. */
+  font-size: max(8px, 0.82em);
+  font-weight: 800;
+  line-height: 1.06;
+  color: #f2f8fd;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  overflow-wrap: anywhere;
+}
+/* The full name only replaces the short one while the card is being read. */
+.card.unit-card .uc-name-full { display: none; }
+.card.unit-card.hand-focus .uc-name,
+.card.unit-card.dragging .uc-name { display: none; }
+.card.unit-card.hand-focus .uc-name-full,
+.card.unit-card.dragging .uc-name-full { display: block; }
+
+/* The keyword, as a pill (P11). A filled capsule rather than coloured text:
+   at fan size a bare word is the same shape as the name above it and the
+   eye has to read both to sort them, whereas a capsule is sorted before it
+   is read. It never grows the nameplate -- the padding is in em and the
+   band is already flex with min-height: 0. */
+.card.unit-card .uc-ability {
+  /* Floor at 7px: below that this line is noise, not information. */
+  font-size: max(7px, 0.6em);
+  line-height: 1.05;
+  color: var(--uc-ink);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  max-width: 100%;
+  padding: 0.14em 0.42em;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, var(--uc-accent), var(--uc-accent-lo));
+  box-shadow:
+    inset 0 0 0 1px rgba(2, 12, 24, 0.45),
+    0 1px 1px rgba(2, 12, 24, 0.45);
+}
+
+/* ---- Hand overlap (P9 fix 2, revised by P10 fix 2) -------------------
+   P9 answered a 14-card hand at 412px with a vertical SPINE: the short name
+   set on its side, running up the ~22px strip of each card that survived the
+   overlap. It fit, and it was unreadable -- rotated type is not type a
+   player scans, it is type a player decodes.
+   P10 caps the fan instead (see render/input.js: at most 9 cards are laid
+   out, and only as many as can each keep a 52px strip, with the rest behind
+   a "+N" chip), so every visible card now has room for a horizontal name and
+   the spine is gone. What survives is the left-alignment below: while the
+   row is still overlapped at all, the readable part of a card is its left
+   edge, so the nameplate sets from the left rather than centring its text
+   under the neighbour that paints over it. */
+#game-screen #player-hand.hand-overlap .card.unit-card .uc-band {
+  align-items: flex-start;
+  padding-left: 0.3em;
+  text-align: left;
+}
+#game-screen #player-hand.hand-overlap .card.unit-card.hand-focus .uc-band,
+#game-screen #player-hand .card.unit-card.dragging .uc-band {
+  align-items: center;
+  text-align: center;
+}
+
+/* ---- Face-down back (P9 fix 5) -------------------------------------- */
+/* Diagonal wave texture plus a sheen, in CSS rather than in art.js:
+   repeating gradients need no <defs>/id (see art.js's header) and cost no
+   bytes in the inlined copies of the back. ART_BACK keeps the anchor mark
+   on top of it. */
+.card.unit-card.face-down .uc-inner-back {
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(125, 190, 235, 0.16) 0 2px,
+      rgba(125, 190, 235, 0) 2px 7px),
+    linear-gradient(150deg, rgba(150, 205, 245, 0.28), rgba(150, 205, 245, 0) 48%),
+    linear-gradient(180deg, #16344f, #0a1725);
+}
+.card.unit-card.face-down .uc-inner-back .uc-art { background: none; }
+.card.unit-card.face-down .uc-inner-back .uc-svg { opacity: 0.9; }
+.card.unit-card.face-down {
+  box-shadow: 0 3px 8px rgba(2, 12, 28, 0.6), inset 0 0 0 1px rgba(3, 14, 26, 0.6);
+}
+
+/* "Known": this exact card was face-up earlier in the round (a Spyglass
+   reveal, a survived attack) and has been turned back down, so the player is
+   entitled to remember it. input.js keeps the uid set and puts the class on
+   the ROOT, which survives flipCard()'s innerHTML-only swap. */
+.card.unit-card.face-down.known {
+  --uc-frame: #c8a253;
+  --uc-frame-lo: #6d5320;
+  box-shadow:
+    0 3px 8px rgba(2, 12, 28, 0.6),
+    inset 0 0 0 1px rgba(3, 14, 26, 0.6),
+    0 0 0 2px rgba(240, 205, 130, 0.55);
+}
+
+/* The existing "card art off" toggle (ui.js setCardArt -> body.no-card-art)
+   must keep working now that art is an <svg>, not a .card-emoji span. */
+/* P11 changed what this setting MEANS. It used to blank the art window
+   entirely; it now drops only the downloaded illustration and leaves the
+   inline art.js SVG, which is already in the markup and costs no request.
+   That is the switch worth having on a weak connection -- the card keeps a
+   picture, the page stops fetching 19 files. The <img> is hidden rather
+   than left unsourced so flipping the setting needs no re-render, exactly
+   like every other rule in this block. */
+body.no-card-art .card.unit-card .uc-img { display: none; }
+
+/* ── States ────────────────────────────────────────────────────────────
+ * The five spec'd classes plus aliases onto the class names ui.js already
+ * toggles, so existing animations keep their hooks. Deliberately no
+ * `animation` on .selected/.legal-target transform-wise conflicting rules:
+ * .entering/.flying/.destroying/.impact/.shake all animate `transform` on
+ * the root, so state styling here sticks to box-shadow/filter/outline and
+ * uses only a single static translate for the lift. */
+
+.card.unit-card.selected {
+  transform: translateY(-6px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 0 0 2px var(--uc-accent);
+  z-index: 3;
+}
+
+.card.unit-card.legal-target,
+.slot.target-highlight > .card.unit-card,
+.slot.highlight > .card.unit-card {
+  outline: 2px solid var(--uc-accent);
+  outline-offset: 1px;
+  animation: uc-target-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes uc-target-pulse {
+  0%, 100% { outline-color: var(--uc-accent); box-shadow: 0 0 0 0 rgba(124, 196, 240, 0.45); }
+  50%      { outline-color: #ffffff;          box-shadow: 0 0 0 4px rgba(124, 196, 240, 0); }
+}
+
+.card.unit-card.illegal {
+  filter: grayscale(0.7) brightness(0.6);
+  cursor: not-allowed;
+}
+
+.card.unit-card.revealed {
+  box-shadow: 0 0 0 2px var(--draw, #fbbf24), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.card.unit-card.destroyed,
+.card.unit-card.destroying {
+  filter: grayscale(1) brightness(0.45);
+}
+
+/* Attack/impact feedback keeps style.css's shake keyframes; just tint it. */
+.card.unit-card.impact .uc-inner { box-shadow: inset 0 0 0 2px var(--loss, #f87171); }
+
+/* Reference modal shows the same card at a comfortable reading size. */
+.card.unit-card.ref-card-face { --slot-w: 112px; }
+
+/* Opponent hand backs are just smaller backs -- drop style.css's stripe
+   pattern rule's effect by giving the back its own art window (already done
+   above); nothing else needed here. */
+
+/* ── Rules-matrix thumbnails ──────────────────────────────────────────── */
+.uc-thumb {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  overflow: hidden;
+  vertical-align: middle;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.uc-thumb .uc-svg { display: block; width: 100%; height: 100%; }
+.rules-matrix .uc-icon { vertical-align: middle; }
+
+/* Role-tinted ring on the thumbnails: at 22px the illustrations alone are
+   too similar (they all share the sea/sky backdrop), so the frame colour is
+   what actually separates the matrix's rows and columns at a glance. */
+.uc-thumb.role-ship  { box-shadow: inset 0 0 0 2px #8fcdf5; }
+.uc-thumb.role-air   { box-shadow: inset 0 0 0 2px #6fb0d8; }
+.uc-thumb.role-shore { box-shadow: inset 0 0 0 2px #c8ad74; }
+.uc-thumb.role-depth { box-shadow: inset 0 0 0 2px #9fadb9; }
+/* The thumbnails have no art window to paint the sky behind the art, now
+   that art.js no longer carries one, so give them the same two-part
+   sky/sea backdrop at the same horizon. */
+.uc-thumb { background: linear-gradient(180deg, #a8ddf5 0%, #a8ddf5 58%, #1c6fa8 58%, #14568a 100%); }
+
+/* Responsive parity with style.css's own .slot/.card breakpoints (70px at
+   <=480, 96px at >=900, 98px at >=1200). Only the *fallback* changes: once
+   the layout starts setting --slot-w, that wins at every width. Without this
+   the two-class .card.unit-card rule would pin cards at 84px inside slots
+   that style.css still grows/shrinks. */
+@media (max-width: 480px) {
+  .card.unit-card { --uc-w: var(--slot-w, 70px); }
+}
+@media (min-width: 900px) {
+  .card.unit-card { --uc-w: var(--slot-w, 96px); }
+}
+@media (min-width: 1200px) {
+  .card.unit-card { --uc-w: var(--slot-w, 98px); }
+}
+
+/* ---- Specificity: beating render/stage.css's id-scoped .card --------
+   stage.css carries `#game-screen .card { background: var(--surface);
+   border: 1px solid ...; border-radius: var(--radius); box-shadow: ... }`,
+   which is (1,1,1) and therefore outranks this file's two-class
+   `.card.unit-card` (0,2,0) on every board and hand card. The result was
+   that the frame gradient above never painted in a match at all -- every
+   card wore the cream `--surface` as its 3px border, which is exactly the
+   "no frame" the art director marked. The four properties stage.css sets
+   are restated here at (1,2,1), and only those four: everything else in
+   this file is already unopposed.
+
+   Not merged into the blocks above because those also serve the reference
+   modal, the gallery and buildCardEl()'s detached elements, none of which
+   live inside #game-screen. */
+#game-screen .card.unit-card {
+  border: none;
+  border-radius: 9px;
+  color: #f2f8fd;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04) 30%, rgba(0, 0, 0, 0.38) 100%),
+    linear-gradient(180deg, var(--uc-frame), var(--uc-frame-lo));
+  box-shadow: 0 2px 5px rgba(2, 14, 28, 0.55), inset 0 0 0 1px rgba(3, 14, 26, 0.55);
+}
+/* stage.css also gives the face-down root its own flat navy gradient. */
+#game-screen .card.unit-card.face-down {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.04) 30%, rgba(0, 0, 0, 0.38) 100%),
+    linear-gradient(180deg, var(--uc-frame), var(--uc-frame-lo));
+  border-color: transparent;
+  box-shadow: 0 3px 8px rgba(2, 12, 28, 0.6), inset 0 0 0 1px rgba(3, 14, 26, 0.6);
+}
+#game-screen .card.unit-card.face-down.known {
+  box-shadow:
+    0 3px 8px rgba(2, 12, 28, 0.6),
+    inset 0 0 0 1px rgba(3, 14, 26, 0.6),
+    0 0 0 2px rgba(240, 205, 130, 0.55);
+}
+
+
+/* ============================================================
+   P10 fix 1 -- strength tiers.
+
+   render/cards.js's decorate() puts `tier-plain | tier-silver | tier-gold`
+   on the ROOT, from def.strength (0-1 / 2-3 / 4-5). The treatment itself
+   hangs off `.uc-inner:not(.uc-inner-back)` for the same reason the role
+   tint is overridden on `.face-down`: decorate() runs for BOTH faces, and a
+   face-down card must not announce that it is a Battleship.
+
+   Specificity: `.card.unit-card .uc-inner` above is (0,3,0); the rules here
+   are (0,5,0), so they replace its inset ring without !important. Nothing
+   here changes a box's size -- the tier is an inset ring and a pseudo, so a
+   gold card and a plain card occupy exactly the same rect.
+   ============================================================ */
+
+/* Tier 0-1: no treatment at all. Stated rather than left implicit -- the
+   plain frame is the baseline the other two are read against, so it must
+   stay genuinely plain. */
+
+/* Tier 2-3: a cool silver line just inside the frame. */
+.card.unit-card.tier-silver .uc-inner:not(.uc-inner-back) {
+  box-shadow:
+    inset 0 0 0 1px rgba(226, 238, 248, 0.72),
+    inset 0 0 0 2px rgba(3, 14, 26, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Tier 4-5: the same line in gold, plus four corner studs. */
+.card.unit-card.tier-gold .uc-inner:not(.uc-inner-back) {
+  box-shadow:
+    inset 0 0 0 1px rgba(247, 214, 133, 0.9),
+    inset 0 0 0 2px rgba(60, 38, 4, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Corner ornaments. One pseudo-element carrying four small radial studs --
+   `.uc-inner` has no ::before of its own (the art window's recess uses
+   `.uc-art::after`), and a pseudo cannot be clipped away by the inner's
+   overflow:hidden the way an extra child could be pushed around by the
+   flex column. */
+.card.unit-card.tier-gold .uc-inner:not(.uc-inner-back)::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: 4;
+  border-radius: 5px;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: 7px 7px;
+  background-position: left top, right top, left bottom, right bottom;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(255, 234, 176, 0.95) 0 1.6px, rgba(160, 118, 34, 0.85) 1.6px 2.6px, rgba(0, 0, 0, 0) 2.7px),
+    radial-gradient(circle at 50% 50%, rgba(255, 234, 176, 0.95) 0 1.6px, rgba(160, 118, 34, 0.85) 1.6px 2.6px, rgba(0, 0, 0, 0) 2.7px),
+    radial-gradient(circle at 50% 50%, rgba(255, 234, 176, 0.95) 0 1.6px, rgba(160, 118, 34, 0.85) 1.6px 2.6px, rgba(0, 0, 0, 0) 2.7px),
+    radial-gradient(circle at 50% 50%, rgba(255, 234, 176, 0.95) 0 1.6px, rgba(160, 118, 34, 0.85) 1.6px 2.6px, rgba(0, 0, 0, 0) 2.7px);
+}
+
+/* The gold tier also warms its nameplate edge, so the tier is still legible
+   on the thumbnail-sized cards in a collapsed hand where the 1px ring is
+   nearly invisible. */
+.card.unit-card.tier-gold .uc-inner:not(.uc-inner-back) .uc-band {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 232, 178, 0.55),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.35);
+}
+
+
+/* ============================================================
+   P11 fix -- tier legibility at fan size.
+
+   P10's tiers were a 1px inset ring. On a 90px gallery card that reads; in
+   a fanned hand at 412px a card is ~52px wide, and silver and gold were
+   not tellable from plain. Three changes, none of which alters a box:
+
+     * the ring is 1.5px over a 1.1px dark line, so it is a BEVEL (light
+       over dark) rather than a hairline. A bevel survives the downscale
+       because it is two tones meeting, not one tone against a frame.
+     * the gold corner studs grow to 10px cells with a warm outer halo, so
+       at 52px a corner is a glint rather than a stray pixel.
+     * silver gains its own lit nameplate edge, the way gold already had
+       one. At fan size the nameplate is the largest continuous piece of
+       frame a player sees, so it is where the tier should live.
+   ============================================================ */
+.card.unit-card.tier-silver .uc-inner:not(.uc-inner-back) {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(232, 243, 251, 0.82),
+    inset 0 0 0 2.6px rgba(3, 14, 26, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+.card.unit-card.tier-silver .uc-inner:not(.uc-inner-back) .uc-band {
+  box-shadow:
+    inset 0 1px 0 rgba(226, 238, 248, 0.5),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.35);
+}
+.card.unit-card.tier-gold .uc-inner:not(.uc-inner-back) {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(250, 218, 136, 0.95),
+    inset 0 0 0 2.6px rgba(60, 38, 4, 0.6),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+.card.unit-card.tier-gold .uc-inner:not(.uc-inner-back)::before {
+  background-size: 10px 10px;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(255, 246, 214, 0.98) 0 2.1px, rgba(214, 164, 58, 0.95) 2.1px 3.2px, rgba(120, 82, 14, 0.5) 3.2px 4.2px, rgba(0, 0, 0, 0) 4.3px),
+    radial-gradient(circle at 50% 50%, rgba(255, 246, 214, 0.98) 0 2.1px, rgba(214, 164, 58, 0.95) 2.1px 3.2px, rgba(120, 82, 14, 0.5) 3.2px 4.2px, rgba(0, 0, 0, 0) 4.3px),
+    radial-gradient(circle at 50% 50%, rgba(255, 246, 214, 0.98) 0 2.1px, rgba(214, 164, 58, 0.95) 2.1px 3.2px, rgba(120, 82, 14, 0.5) 3.2px 4.2px, rgba(0, 0, 0, 0) 4.3px),
+    radial-gradient(circle at 50% 50%, rgba(255, 246, 214, 0.98) 0 2.1px, rgba(214, 164, 58, 0.95) 2.1px 3.2px, rgba(120, 82, 14, 0.5) 3.2px 4.2px, rgba(0, 0, 0, 0) 4.3px);
+}
+.card.unit-card.tier-gold .uc-inner:not(.uc-inner-back) .uc-band {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 232, 178, 0.7),
+    inset 0 0 0 1px rgba(2, 12, 24, 0.35);
+}
+
+
+
+/* ============================================================
+   P13 fix 1 -- the card as a physical object, and tier by geometry.
+
+   The illustrations are lit from the top-left (tools/gen_sea_hunter_art.py),
+   so the card they are printed on is too: a faint specular glint in the
+   top-left of the frame, a 1px darker edge on the bottom and right, and the
+   contact shadow thrown down and to the right. One pseudo on the ROOT
+   carries the glint and both edges -- the root has no ::after of its own
+   (.uc-art::after is the recess, .uc-inner::before the gold studs), and a
+   pseudo is paint only, so no card changes size.
+
+   Tier, which P10/P11 carried as an inner ring only, now also changes the
+   frame's geometry. CSS only, off the same `tier-*` classes decorate() puts
+   on the root:
+     * iron   (`tier-plain`, strength 0-1): a thin 2px frame;
+     * silver (strength 2-3): the medium 3px frame every card had before;
+     * gold   (strength 4-5): a heavier 4px frame with notched corners.
+   The frame width is the `.uc-inner` inset (the frame IS the root's own
+   background showing around it), so the rect a card occupies on the board
+   never changes -- only how much of it is frame. Keyed on the root having a
+   FACE-UP inner (`:has(> .uc-inner:not(.uc-inner-back))`) for the same
+   reason as every tier rule above: a face-down card must not leak its tier.
+   ============================================================ */
+/* Both forms: `#game-screen .card.unit-card` above restates the base
+   box-shadow at (1,2,0) for the stage, so the class-only rule alone would
+   only reach the gallery and the reference modal. */
+.card.unit-card,
+#game-screen .card.unit-card {
+  box-shadow: 1px 3px 5px rgba(2, 14, 28, 0.55), inset 0 0 0 1px rgba(3, 14, 26, 0.55);
+}
+.card.unit-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(46% 30% at 14% 5%, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0) 72%);
+  box-shadow:
+    inset -1px -1px 0 rgba(2, 10, 20, 0.62),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+/* Iron: thin. */
+.card.unit-card.tier-plain > .uc-inner:not(.uc-inner-back) { inset: 2px; }
+
+/* Silver: medium -- the 3px of the base rule, stated so the three read as a
+   scale in one place. */
+.card.unit-card.tier-silver > .uc-inner:not(.uc-inner-back) { inset: 3px; }
+
+/* Gold: 4px, squarer outer corners, and a 45-degree notch cut into each.
+   The notch is two things that line up: the inner is clip-pathed to a
+   chamfered octagon, and the root's pseudo paints each outer corner as a
+   dark cut face with a gold lip. The studs (::before, 10px cells, centred
+   6px in) sit just clear of the 6px chamfer. */
+.card.unit-card.tier-gold:has(> .uc-inner:not(.uc-inner-back)),
+#game-screen .card.unit-card.tier-gold:has(> .uc-inner:not(.uc-inner-back)) { border-radius: 5px; }
+.card.unit-card.tier-gold > .uc-inner:not(.uc-inner-back) {
+  inset: 4px;
+  border-radius: 2px;
+  clip-path: polygon(5px 0, calc(100% - 5px) 0, 100% 5px, 100% calc(100% - 5px),
+    calc(100% - 5px) 100%, 5px 100%, 0 calc(100% - 5px), 0 5px);
+}
+.card.unit-card.tier-gold:has(> .uc-inner:not(.uc-inner-back))::after {
+  background:
+    linear-gradient(135deg, rgba(38, 22, 2, 0.92) 0 4.2px, rgba(255, 226, 150, 0.95) 4.2px 5.6px, rgba(0, 0, 0, 0) 5.6px) left top / 14px 14px no-repeat,
+    linear-gradient(225deg, rgba(38, 22, 2, 0.92) 0 4.2px, rgba(214, 164, 58, 0.95) 4.2px 5.6px, rgba(0, 0, 0, 0) 5.6px) right top / 14px 14px no-repeat,
+    linear-gradient(45deg, rgba(38, 22, 2, 0.92) 0 4.2px, rgba(214, 164, 58, 0.95) 4.2px 5.6px, rgba(0, 0, 0, 0) 5.6px) left bottom / 14px 14px no-repeat,
+    linear-gradient(315deg, rgba(38, 22, 2, 0.92) 0 4.2px, rgba(150, 108, 30, 0.95) 4.2px 5.6px, rgba(0, 0, 0, 0) 5.6px) right bottom / 14px 14px no-repeat,
+    radial-gradient(46% 30% at 14% 5%, rgba(255, 246, 214, 0.36), rgba(255, 255, 255, 0) 72%);
+}

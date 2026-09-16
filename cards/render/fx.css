@@ -1,0 +1,341 @@
+/* Sea Hunter -- phase P3 "Combat juice": the static half of render/fx.js.
+ *
+ * Loaded AFTER stage.css / cards.css / input.css. Everything here is either
+ * inside `.fx-layer` (a transient overlay fx.js appends to `#game-screen
+ * .stage`) or a single marker class on a board card, so nothing in this file
+ * can change the resting layout of the stage.
+ *
+ * Motion itself lives in fx.js as Web Animations keyframes -- transform and
+ * opacity only. This file supplies the boxes those keyframes move, and the
+ * one media query that honours prefers-reduced-motion for anything a
+ * keyframe cannot express.
+ *
+ * As with stage.css: style.css sets `html { font-size: 30px }`, so every size
+ * here is px.
+ */
+
+.fx-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  overflow: hidden;
+  /* Its own stacking context, so a shard or a banner can never be painted
+     under a board card because of some ancestor's z-index. */
+  isolation: isolate;
+}
+
+/* The attacking card is lifted out of its row for the length of the lunge,
+   otherwise the neighbouring slot's card paints over it mid-travel. */
+.card.fx-lunging {
+  z-index: 40;
+  position: relative;
+  will-change: transform;
+}
+
+/* ---- impact flash ---------------------------------------------------
+   White core washing out through the accent into nothing. A radial-gradient
+   background rather than a box-shadow so the expansion is a pure transform
+   scale and never repaints a shadow. */
+.fx-flash {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* P10 fix 3: two flashes, not one.
+   WIN is the cyan the rest of the build already uses for "yours, working" --
+   the targeting arc, the legal-target ring, the selected card. LOSS (and
+   DRAW, where one of yours also dies) is a negative red, hot at the core and
+   falling off through the same shape. They are told apart in the first frame
+   at a glance, which is the whole point: at 220 ms nobody has read the
+   callout yet. */
+.fx-flash-win {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(255, 255, 255, 0.85) 22%,
+    var(--gold, #f4c24f) 48%,
+    rgba(244, 194, 79, 0.38) 70%,
+    rgba(244, 194, 79, 0) 100%
+  );
+}
+.fx-flash-loss {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 244, 240, 0.98) 0%,
+    rgba(255, 196, 172, 0.9) 20%,
+    var(--danger, #e5352b) 44%,
+    rgba(229, 53, 43, 0.42) 70%,
+    rgba(229, 53, 43, 0) 100%
+  );
+}
+
+/* ---- splash burst ---------------------------------------------------
+   The water a hit knocks off the sea. fx.js creates SPLASH_N of these on
+   contact, sets left/top/width/height ONCE, and then animates transform and
+   opacity only -- so a ten-particle burst is ten composited layers and no
+   layout work at all.
+   Blue-white rather than either flash colour, so the spray stays spray
+   against both. The inner highlight is what keeps a 3px dot from reading as
+   a flat speck at phone scale. */
+.fx-splash {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background:
+    radial-gradient(circle at 35% 30%,
+      rgba(255, 255, 255, 0.98) 0 40%,
+      rgba(198, 236, 255, 0.95) 55%,
+      rgba(126, 194, 240, 0.85) 100%);
+  /* Two rings of glow: a tight white one so the dot keeps a hard edge
+     against the mid-blue of an empty slot, and a wider cyan one so a
+     6px particle still carries at arm's length on a 412px phone. */
+  box-shadow:
+    0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 9px rgba(150, 216, 255, 0.85);
+}
+
+/* ---- result callout -------------------------------------------------
+   Sits above the defender and rises as it fades. `left`/`top` are set once at
+   creation; the rise is a transform. */
+.fx-callout {
+  position: absolute;
+  transform: translate(-50%, 0);
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* P13 fix 2: WIN is warm gold, LOSS is the danger red -- each as a filled
+   pill with a dark ink, not a coloured word on white, so the two outcomes
+   are told apart by the chip's colour before the word is read. */
+.fx-callout-win   { color: #3a2604; background: linear-gradient(180deg, var(--gold-hi, #ffe7a6), var(--gold, #f4c24f)); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 12px rgba(244, 194, 79, 0.55); }
+.fx-callout-loss  { color: #ffffff; background: linear-gradient(180deg, var(--danger-hi, #ff6b5d), var(--danger, #e5352b)); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 12px rgba(229, 53, 43, 0.55); text-shadow: 0 1px 1px rgba(80, 6, 2, 0.6); }
+.fx-callout-draw  { color: var(--ink, #1c2431); }
+/* NONE reads as a non-event, so it is the quietest of the four: the dim ink
+   and lower-case wording deliberately do not compete with a real outcome. */
+.fx-callout-none {
+  color: var(--ink-dim, rgba(28, 36, 49, 0.62));
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* ---- destroy shards -------------------------------------------------
+   Each shard is a full clone of the destroyed card with a clip-path wedge, so
+   the pieces carry the real art and frame rather than generic confetti. The
+   clone is absolutely positioned in the fx layer; fx.js pins its --slot-w so
+   cards.css still sizes its innards correctly off the board. */
+.card.fx-shard {
+  position: absolute;
+  margin: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+  /* A shard must not keep any board-state affordance from the card it was
+     cloned from -- it is debris, not a target. */
+  cursor: default;
+  filter: brightness(1.08);
+}
+
+.card.fx-shard.selected,
+.card.fx-shard.legal-target,
+.card.fx-shard.entering {
+  box-shadow: none;
+  outline: none;
+}
+
+/* ---- turn strip (P9 fix 6) ------------------------------------------
+   Was a 19px full-width band skewed through the STAGE'S VERTICAL MIDDLE --
+   which is exactly where the contested island and the two front rows are,
+   so every handover covered the part of the board the player was reading.
+
+   Now a thin strip pinned directly under the top bar. --hud-h is declared
+   on #game-screen (see render/stage.css), and the fx layer is a child of
+   the stage inside it, so `top: var(--hud-h)` lands on the seam between the
+   top bar and the opponent strip at every viewport -- including the
+   landscape phone, where --hud-h is 36px rather than 44px.
+
+   The persistent half of this cue -- the 2px accent glow around whichever
+   side is active -- is not here: it has to survive for the whole turn, so
+   render/input.js's refresh() puts .turn-mine / .turn-theirs on the stage
+   and render/stage.css paints it. This strip is only the announcement. */
+.fx-banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--hud-h, 44px);
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  /* One line always: "OPPONENT'S TURN" wraps at phone width otherwise. */
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  will-change: transform, opacity;
+  /* The unroll in render/fx.js is a scaleY, and it has to hang from the
+     strip's top edge rather than grow out of its middle. */
+  transform-origin: top;
+  z-index: 3;
+}
+
+.fx-banner-mine {
+  background: linear-gradient(90deg, rgba(46, 158, 107, 0) 0%, var(--positive, #2e9e6b) 20%, #43c489 50%, var(--positive, #2e9e6b) 80%, rgba(46, 158, 107, 0) 100%);
+}
+
+.fx-banner-theirs {
+  /* P13 fix 2: the opponent's turn is the danger red, and it GLOWS -- the
+     strip throws red light down onto the opponent strip below it. */
+  background: linear-gradient(90deg, rgba(229, 53, 43, 0) 0%, var(--danger, #e5352b) 20%, var(--danger-hi, #ff6b5d) 50%, var(--danger, #e5352b) 80%, rgba(229, 53, 43, 0) 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 4px 18px rgba(229, 53, 43, 0.6);
+}
+
+/* ---- score ticker ---------------------------------------------------
+   One digit-tall mask per side. The strip inside holds the old digit above
+   the new one and is translated by exactly -50% to roll over, so the roll is
+   a transform on a fixed-size box and never reflows the top bar. */
+.fx-score-chip { display: inline-flex; align-items: center; gap: 4px; }
+
+.fx-score {
+  display: inline-flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.fx-mask {
+  display: inline-block;
+  overflow: hidden;
+  /* 1em tall: exactly one digit of the surrounding top-bar type scale. */
+  height: 1em;
+  line-height: 1em;
+  vertical-align: bottom;
+}
+
+.fx-roll {
+  display: block;
+  will-change: transform;
+}
+
+.fx-roll > span {
+  display: block;
+  height: 1em;
+  line-height: 1em;
+}
+
+/* The separator needs real padding: the flex row around it collapses the
+   literal spaces in " : ", which would print the score as "0:0". */
+.fx-score-sep { opacity: 0.7; padding: 0 3px; }
+.fx-score-suffix { opacity: 0.75; }
+
+/* #phase-label is a span, and a transform on an inline box is a no-op -- the
+   turn pulse would silently do nothing. */
+#game-screen #phase-label { display: inline-block; }
+
+/* ---- reduced motion -------------------------------------------------
+   fx.js already swaps every keyframe set for a 120 ms opacity fade when the
+   user asks for reduced motion. This covers the two things a keyframe cannot
+   express: the shard break (pointless without travel -- one plain piece is
+   enough) and the banner's skew. */
+@media (prefers-reduced-motion: reduce) {
+  .card.fx-shard { display: none; }
+  /* fx.js already skips the burst and the stage shake entirely under
+     reduced motion; this is belt and braces for a node that somehow
+     outlives a preference change mid-attack. */
+  .fx-splash { display: none; }
+  .fx-banner {
+    transform: none;
+    box-shadow: none;
+  }
+  .card.fx-lunging { will-change: auto; }
+}
+
+/* ============================================================
+   P12 "Living board" -- attack weight.
+
+   Three additions, all inside the existing .fx-layer and all obeying this
+   file's rules: transform and opacity only, first keyframe already visible.
+     * the callout's "3 vs 5" state, before it resolves into the verdict;
+     * the destroy flash -- red, and distinct from P10's cyan/red CONTACT
+       flash by being a separate, later beat on a slot that is emptying;
+     * debris -- dark hull plating and embers, rectangles, thrown in a full
+       circle, so it cannot be mistaken for the blue-white round spray the
+       splash burst throws in an upper-half fan at contact.
+   ============================================================ */
+
+/* ---- the "3 vs 5" phase of the callout ------------------------------- */
+/* Deliberately quieter than the verdict it turns into: the numbers are the
+   evidence, the word is the ruling. Tabular figures so 1 and 5 occupy the
+   same width and the chip does not twitch as it reads out. */
+.fx-callout-vs {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--ink, #1c2431);
+  background: rgba(255, 255, 255, 0.86);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The verdict landing. A one-shot pop on the swap frame, so the resolve is
+   an event rather than a silent text change under a rising chip. */
+.fx-callout-resolved { animation: fx-verdict-pop 180ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+@keyframes fx-verdict-pop {
+  0%   { letter-spacing: 0.02em; }
+  45%  { letter-spacing: 0.12em; }
+  100% { letter-spacing: 0.06em; }
+}
+
+/* ---- destroy flash --------------------------------------------------- */
+/* Red at full strength on the first frame (see fx.js's header on keyframe
+   direction), centred on the slot that is emptying. */
+.fx-destroy-flash {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  background: radial-gradient(circle,
+    rgba(255, 244, 232, 0.95) 0 16%,
+    rgba(255, 138, 74, 0.85) 34%,
+    rgba(214, 48, 34, 0.55) 56%,
+    rgba(214, 48, 34, 0) 76%);
+}
+
+/* ---- debris ---------------------------------------------------------- */
+/* Hull plating: dark, hard-edged, slightly angled. Nothing round and
+   nothing blue -- that vocabulary belongs to the splash. */
+.fx-debris {
+  position: absolute;
+  pointer-events: none;
+  will-change: transform, opacity;
+  border-radius: 1px;
+  background: linear-gradient(120deg, #40342a, #16110d);
+  box-shadow: 0 0 0 1px rgba(10, 6, 4, 0.55);
+}
+/* Every fourth piece is burning. The glow is a static box-shadow, never an
+   animated one -- an animated shadow is a paint per frame per particle. */
+.fx-debris-ember {
+  background: linear-gradient(120deg, #ffd9a0, #ff6a2a);
+  box-shadow: 0 0 5px rgba(255, 128, 48, 0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* fx.js already skips destroyBurst() under reduced motion; this is the
+     belt to that braces, matching how .fx-splash is handled above. */
+  .fx-debris, .fx-destroy-flash { display: none; }
+  .fx-callout-resolved { animation: none; }
+}

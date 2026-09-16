@@ -1,0 +1,1062 @@
+/* Shared hypercasual style layer (tokens only -- see
+   www/games/hypercasual.css + www/games/README-hypercasual-style.md).
+   Scope of this pass: the main menu screen (#main-menu) is fully
+   converted onto --hc-* tokens -- bright cream background, candy
+   buttons (primary + secondary), warm ink text -- matching the
+   treatment Spyfall's menu/join screen got in #156. The in-game board
+   (dark palette, card faces, HUD) is intentionally untouched; that is
+   a separate, larger pass (tracked as the open gap from #168). Keeping
+   the scope to one coherent, renderable screen per pass so each is
+   independently reviewable/revertable. */
+@import url("../hypercasual.css");
+
+:root {
+  --bg: #0a0e14;
+  --bg-panel: #131a24;
+  --bg-card: #1b2531;
+  --border: #2a3240;
+  --text: #e8edf4;
+  --text-dim: #8794a6;
+  --accent: #38bdf8;
+  --win: #34d399;
+  --loss: #f87171;
+  --draw: #fbbf24;
+  --none: #4b5563;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* ---- P0 "Scene" design tokens (MTG-Arena-style single-screen stage).
+     Deliberately NEW names: the legacy --accent/--bg/--text tokens above
+     recolour every menu, shop and modal in this file, so the scene palette
+     is added alongside them rather than redefining them. render/stage.css
+     is the only consumer. */
+  --sea-deep: #0f4c81;
+  --sea-mid: #1b6ca8;
+  --sea-horizon: #3d93c7;
+  --sea-gradient: linear-gradient(180deg, #0f4c81 0%, #1b6ca8 46%, #3d93c7 62%, #1b6ca8 78%, #0f4c81 100%);
+  --surface: #f4efe6;
+  --ink: #1c2431;
+  --ink-dim: rgba(28, 36, 49, 0.62);
+  --accent-warm: #f28c28;
+  /* P13 fix 2: two signal colours with ONE job each, so neither is worn
+     out by decoration. Orange (--accent-warm) is primary buttons only.
+       --danger: LOSS callouts and the destroy flash, the surrender confirm,
+                 the opponent's turn strip and glow, and the last-unit
+                 warning. Nothing else in the build is this red.
+       --gold:   WIN callouts and flash, island captures, the victory. */
+  --danger: #e5352b;
+  --danger-hi: #ff6b5d;
+  --danger-lo: #8e140d;
+  --gold: #f4c24f;
+  --gold-hi: #ffe7a6;
+  --gold-lo: #a8741a;
+  --positive: #2e9e6b;
+  --negative: #c94a3d;
+  --slot-outline: rgba(255, 255, 255, 0.28);
+  --slot-highlight: var(--accent);
+  --radius: 12px;
+  --shadow-soft: 0 6px 18px rgba(4, 22, 40, 0.28);
+}
+
+* { box-sizing: border-box; }
+
+/* Hypercasual pass: ~1.9x base font-size so every `rem`-based rule in this
+   file scales up together (bright/big/chunky readability, owner's #1 ask).
+   Card/slot/container pixel dimensions below are grown to match so the
+   bigger text actually fits -- see the per-section comments for what each
+   one had to grow to stop clipping. Comfortable line-height added at the
+   root so multi-line text (ability descriptions, menu subtext) doesn't feel
+   cramped at the larger size. */
+html {
+  font-size: 30px; /* was the 16px browser default -> ~1.875x */
+  line-height: 1.45;
+}
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  height: 100%;
+  /* P0: the page itself never scrolls -- the match is a fixed stage sized
+     to the viewport (render/stage.css). `touch-action: manipulation` kills
+     the double-tap-to-zoom delay so card taps register immediately. */
+  overflow: hidden;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+.hidden { display: none !important; }
+
+/* Body no longer scrolls, so each screen owns its own scrollport -- the
+   menu/shop/campaign screens are still taller than a phone viewport and
+   must stay reachable. `margin: auto` on the inner block keeps them
+   optically centred when they DO fit, without clipping the top when they
+   don't (which `align-items: center` on an overflowing flex box does). */
+.screen {
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  /* `safe center` (not plain `center`): once the content is taller than the
+     viewport, plain centring overflows BOTH ends and the top of the screen
+     becomes unreachable now that the body itself no longer scrolls. `safe`
+     falls back to start-alignment in exactly that case, so a long menu
+     scrolls from its first line. */
+  align-items: safe center;
+  justify-content: safe center;
+  flex-direction: column;
+}
+
+/* BUGFIX (layout-shift jitter): the game screen's content height changes
+   every turn (zones losing/gaining cards, hand shrinking, combat-log
+   entries) -- centering it with .screen's `align-items: center` meant the
+   flex container re-centers the WHOLE column on every such change, so the
+   HUD and board visibly jump even though nothing about them individually
+   changed. Static screens (menu/loading/campaign) keep the centered look;
+   the game screen is anchored from the top instead, so a height change
+   below the fold never shifts anything above it. */
+#game-screen.screen {
+  justify-content: flex-start;
+  /* .screen's `align-items: center` also horizontally shrink-wraps every
+     direct child to its own content width before centering it -- fine for
+     the menu screens, but on the game screen it was squeezing .hud,
+     .status-bar, #player-hand, and .controls into a narrow, cramped block
+     instead of letting them span the available width (only .board escaped
+     this, because it sets its own explicit width). Stretch instead, so
+     those rows fill the width and lay out their own internal
+     justify-content as designed. */
+  align-items: stretch;
+  padding-top: 0;
+}
+
+/* Loading */
+.loading-inner { text-align: center; }
+.loading-emoji { font-size: 4rem; animation: bob 1.6s ease-in-out infinite; }
+.loading-text { color: var(--text-dim); margin-top: 8px; letter-spacing: 0.1em; }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+/* Menu -- max-width widened so the now-larger title/buttons have room
+   (420px was already snug pre-scale; at ~1.9x text it would wrap awkwardly). */
+.menu-inner { text-align: center; max-width: 640px; padding: 24px; }
+.menu-title { font-size: 2.4rem; margin: 0 0 8px; line-height: 1.2; }
+.menu-sub { color: var(--text-dim); margin-bottom: 24px; }
+
+/* Hypercasual menu pass -- #main-menu only (scope: this screen, not the
+   in-game board). Swaps the dark-cyber-UI backdrop/type for the shared
+   --hc-* candy palette + Baloo2/Nunito font stack, matching Spyfall's
+   #156 reskin. Layout/markup/IDs are untouched -- pure token swap. */
+#main-menu {
+  background: linear-gradient(180deg, var(--hc-bg) 0%, #ffe4c4 100%);
+}
+#main-menu .menu-title {
+  color: var(--hc-ink);
+  font-family: var(--hc-font-display);
+  font-weight: 800;
+}
+#main-menu .menu-sub {
+  color: var(--hc-ink-dim);
+  font-family: var(--hc-font-body);
+  font-weight: 700;
+}
+/* Secondary menu buttons (Campaign/Leaderboard/Settings/Back) were still
+   the file's original dark flat rectangles -- only .btn-primary had been
+   converted (the #168 proof-of-adoption). Bring them onto the same chunky
+   pop-shadow + candy treatment so the whole menu reads as one coherent
+   screen instead of one bright button floating in a dark stack. */
+#main-menu .btn-secondary {
+  background: var(--hc-bg-panel);
+  color: var(--hc-ink);
+  font-family: var(--hc-font-body);
+  font-weight: 700;
+  border: 2px solid var(--hc-border);
+  border-radius: var(--hc-radius-lg);
+  box-shadow: var(--hc-shadow-card);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+#main-menu .btn-secondary:active {
+  transform: translateY(3px);
+  box-shadow: var(--hc-shadow-pressed);
+}
+
+.btn-primary, .btn-secondary, .btn-icon {
+  font: inherit;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+/* Proof-of-adoption: primary menu button pulls its color/shape/depth
+   from the shared hypercasual tokens (candy-orange + chunky pop-shadow +
+   bigger radius + press-flatten) instead of the file's own dark --accent.
+   Font-size/weight/padding stay local so this is a targeted swap, not a
+   layout change. */
+.btn-primary {
+  background: var(--hc-candy-orange);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--hc-radius-lg);
+  font-weight: 800;
+  padding: 12px 28px;
+  font-size: 1rem;
+  box-shadow: var(--hc-shadow-pop);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.btn-primary:active { transform: translateY(4px); box-shadow: var(--hc-shadow-pressed); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-secondary {
+  background: var(--bg-panel);
+  color: var(--text);
+  padding: 10px 20px;
+  text-decoration: none;
+  display: inline-block;
+  margin-top: 10px;
+}
+/* Icon buttons (reference/rules/pause/close) are fixed px squares holding a
+   single emoji glyph -- grown from 36px so the emoji doesn't overflow its
+   own button at the bigger font-size. */
+.btn-icon {
+  background: var(--bg-panel);
+  color: var(--text);
+  width: 52px; height: 52px;
+  font-size: 1.1rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* HUD -- allowed to wrap (flex-wrap) instead of a strict single row: at the
+   bigger font-size, round-info + score-info + phase-label + 3 icon buttons
+   no longer reliably fit one row on narrow/mobile widths, and wrapping
+   beats clipping or squeezing text unreadably small again. */
+.hud {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 10px 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.hud-left { display: flex; gap: 16px; color: var(--text-dim); font-size: 0.9rem; flex-wrap: wrap; }
+.hud-center { font-size: 1.05rem; }
+.hud-right { display: flex; gap: 8px; }
+
+.status-bar {
+  min-height: 1.6em;
+  text-align: center;
+  padding: 6px 12px;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+/* Board -- grid-spec rebuild (owner's board_spec.md, mid=481/491/495,
+   supersedes PR #290's horizontal-tab meta-bar). Target: islands/artifacts
+   as LEFT/RIGHT rail ZONES flanking a CENTER 16-cell combat grid, hand
+   rows top/bottom, no wasted vertical void. `.board`/`.board-main` keep
+   PR #290's full-width-fill principle (owner explicitly rejected a
+   fit-content shrink earlier -- "the zone needs to be FILLED, not
+   shrunk", see PR #290 history) -- only the internal arrangement changes,
+   from a single stacked column to a 3-column CSS grid. Hand rows
+   (#opp-hand above this, #player-hand below) stay siblings of `.board`,
+   not children of it, unchanged. */
+.board {
+  width: 94%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+/* 3-column named-area grid: a thin full-width "meta" strip (the shared,
+   neutral contested-island indicator -- not owned by either player, so it
+   doesn't belong in either rail) on top, then LEFT rail / CENTER combat /
+   RIGHT rail below. Collapses to a stacked strip layout on narrow
+   viewports (see the max-width:760px query further down) -- rails have no
+   room to sit beside a phone-width combat grid, so they fold into one
+   thin horizontal strip instead ("тонкой строкой"), same idea PR #290
+   already used for the (now removed) meta-bar, just scoped to mobile
+   only. */
+.board-main {
+  display: grid;
+  grid-template-columns: minmax(70px, 112px) 1fr minmax(70px, 112px);
+  grid-template-areas:
+    "meta  meta    meta"
+    "railL combat  railR";
+  align-items: start;
+  gap: 8px 10px;
+  width: 100%;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 14px 12px;
+}
+.meta-strip {
+  grid-area: meta;
+  display: flex; justify-content: center; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.rail-right { grid-area: railR; }
+.rail-left { grid-area: railL; }
+/* Rail contents wrap: on the narrow desktop rail column (70-112px) a
+   108px-min .side-block can't fit beside another one, so `flex-wrap`
+   naturally stacks them into a vertical list -- no separate
+   flex-direction:column rule needed. On the mobile strip (rail columns
+   go ~half-viewport wide, see the media query) the same wrap rule lets
+   two side-blocks sit side by side instead when there's room. */
+.rail {
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px;
+}
+
+.combat-grid {
+  grid-area: combat;
+  display: flex; flex-direction: column; gap: 13px;
+}
+/* Each side stacks its own Front/Reserve zones as full-width rows instead
+   of splitting them side-by-side (an empty zone would otherwise still eat
+   half the row). Opponent rows sit on top, player rows on bottom,
+   back-to-back; see the divider rule on .player-section further down for
+   the seam between the two sides. */
+.opp-section, .player-section {
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: stretch;
+}
+/* Opponent zones read Front-then-Reserve, matching the player's own
+   Front-then-Reserve DOM order below -- a pure visual reorder (game logic
+   still queries #opp-front/#opp-reserve directly by id, untouched) so
+   both sides read top-to-bottom as Front, Reserve on the way toward the
+   divider in the middle. */
+#opp-front { order: 1; }
+#opp-reserve { order: 2; }
+
+/* Thin color-coded seam between the opponent's rows and the player's rows
+   -- cool (accent blue) on the opponent edge, warm (candy orange) on the
+   player edge -- so the two stacks read as one continuous battle line
+   with a clear "whose side is whose" seam, not two disconnected chunks
+   with a gap between them. */
+.player-section {
+  position: relative;
+}
+.player-section::before {
+  content: "";
+  position: absolute;
+  top: -8px; left: 0; right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(to bottom, var(--accent), var(--hc-candy-orange));
+  box-shadow: 0 -3px 8px -3px rgba(56,189,248,0.6), 0 3px 8px -3px rgba(255,138,61,0.6);
+}
+
+/* True 4-column grid (was flex `space-evenly`): the owner's spec draws the
+   16 combat cells as an actual grid, chess-board style ("16 бой = 4x4").
+   renderZone (ui.js) always renders exactly 4 slots per zone -- filled or
+   empty (game.js's FRONT_SIZE/RESERVE_SIZE = 4) -- so `repeat(4, 1fr)`
+   gives every one of the 4 stacked rows (opp reserve/front, player
+   front/reserve) the same column tracks: cards land in pixel-aligned
+   columns across all 4 rows instead of flex's independent per-row
+   centering/wrapping, which is what let cards drift out of column
+   alignment between rows. Cards stay their own fixed size (see .slot/.card
+   below) and center within their column via `justify-items`, so a 1- or
+   2-card row still spreads its cards into the same column positions a
+   full row would use -- reach both edges of the panel like the "fill, don't
+   cluster" full-width fix, but as literal grid columns now, not a loose
+   flex spread. */
+.zone {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  justify-items: center; align-items: center;
+  padding: 6px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 10px;
+  min-height: 124px; /* matches the base .card height grown below (74->98->112) */
+  position: relative; /* anchors the Front/Reserve edge label below */
+}
+
+/* Small FRONT/RESERVE labels on each zone's left edge (owner ask: make
+   the unified battle line legible at a glance without guessing which row
+   is which). Sits as a tab just above the zone rather than overlapping
+   the cards inside it. Reuses the same small-caps treatment as
+   .side-label ("Opponent islands" etc.) for visual consistency across
+   the board. Targets the shared .front-zone/.reserve-zone classes, so
+   the same rule labels both the opponent's and the player's rows --
+   which side is which is already conveyed by position (top vs bottom of
+   the divider). */
+.front-zone::before,
+.reserve-zone::before {
+  content: "";
+  position: absolute;
+  left: 4px; top: -12px;
+  font-size: 0.58rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.front-zone::before { content: "Front"; }
+.reserve-zone::before { content: "Reserve"; }
+
+/* Opponent islands / your islands / artifacts -- each a small bordered
+   badge block, now living inside the LEFT/RIGHT rails (see .rail above).
+   `min-width` keeps an empty block from collapsing to just its label's
+   text width and looking like a stray caption; content still grows it
+   wider when there are several islands/artifacts to show. Overridden to
+   `min-width: 0` inside `.rail` specifically (see the `.rail .side-block`
+   rule below) since this base min-width was sized for badges sitting side
+   by side in a wide strip, not a narrow rail column. */
+.side-block {
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 108px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.side-label { font-size: 0.62rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Artifacts zone -- kept SEPARATE from "Your islands" (owner follow-up,
+   mid=687: do not merge them). This is specifically the artifact PURCHASE
+   zone ("артефакт покупки"), not a display-only badge like the other three
+   side-blocks, so it gets its own gold (--draw) accent -- the same token
+   `.artifact-card` already uses for its border -- to visually read as a
+   distinct "shop" slot rather than just another info box. Buy logic isn't
+   wired yet (out of scope here); this is purely the "reads as a purchase
+   slot" ask. */
+.side-block.shop-block {
+  border-color: var(--draw);
+  background: rgba(251,191,36,0.06);
+}
+.side-block.shop-block .side-label { color: var(--draw); }
+.side-label-note { text-transform: none; letter-spacing: 0; opacity: 0.8; }
+
+.islands-row { display: flex; gap: 6px; flex-wrap: wrap; min-height: 44px; align-items: center; }
+
+/* Rail context: `.side-block`'s 108px min-width was sized for the old
+   horizontal meta-bar (badges sitting side by side); inside the narrow
+   70-112px rail column it would force the column wider than its track and
+   push the combat grid off-center. `min-width: 0` lets it shrink to the
+   rail's actual width instead; `width: 100%` + centered row contents make
+   island/artifact cards stack into a clean single-file column that reads
+   as a vertical list, matching the owner's "LEFT/RIGHT rail" framing. */
+.rail .side-block { min-width: 0; width: 100%; }
+.rail .islands-row, .rail .artifacts-row { justify-content: center; }
+
+/* Vertical/mobile layout (owner mid=485: "надо десктоп и вертикал"; mid=488:
+   "острова+артефакты тонкой строкой (по бокам места нет)"). Below 760px
+   there's no room for true side columns beside a phone-width combat grid,
+   so the two rails drop out of the 3-column grid and become a single row
+   -- a thin horizontal strip -- stacked ABOVE the now full-width combat
+   grid instead. Opponent islands (left half) / my islands+artifacts
+   (right half) still read left=opponent, right=mine, just as a strip
+   instead of tall columns. Hand rows are unaffected (already full-width
+   siblings of `.board` at every breakpoint). */
+@media (max-width: 760px) {
+  .board-main {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "meta  meta"
+      "railL railR"
+      "combat combat";
+    gap: 6px 8px;
+  }
+  .rail { padding-bottom: 6px; margin-bottom: 2px; }
+  .rail-left { border-right: 1px solid var(--border); }
+}
+
+/* Slots and cards -- base size grown 60x78/56x74 -> 80x104/74x98 in an
+   earlier pass, then again here (80x104/74x98 -> 92x120/84x112, owner ask
+   "ячейки крупнее" = cells bigger, part of the full-width-fill correction
+   above -- now that .zone spreads across the board's full width via
+   space-evenly instead of clustering centered, bigger cells read as "the
+   board is full of game" instead of a few small cards floating in a wide
+   empty row). Kept to a ~15% bump rather than going further: the
+   >=900px/1200px comment further down already notes a past version at
+   116x148 pushed the whole game screen to ~1700px tall on a normal
+   1280x800 viewport and shoved the footer/hand below the fold -- most of
+   the "fill the width" work here comes from `space-evenly` spreading the
+   (still fixed) 4-slot rows across the full board width, not from
+   ballooning the cards themselves, so this stays comfortably under that
+   previously-hit ceiling. */
+.slot {
+  width: 92px; height: 120px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.slot.empty { opacity: 0.5; }
+.slot.highlight, .slot.dragover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(56,189,248,0.3); }
+.slot.target-highlight { border-color: var(--loss); box-shadow: 0 0 0 2px rgba(248,113,113,0.35); }
+
+.card {
+  width: 84px; height: 112px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.15s ease;
+  user-select: none;
+}
+.card.face-down .card-back {
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.card-inner { text-align: center; }
+.card-face { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.card-emoji { font-size: 1.13rem; } /* was 1.7rem -- owner ask: shrink card emoji 1.5x */
+.card-name { font-size: 0.72rem; font-weight: 700; color: var(--text-dim); line-height: 1.2; }
+.card-strength { font-size: 0.68rem; color: var(--accent); }
+.card.shake { animation: shake 0.5s; }
+.card.shielded { box-shadow: 0 0 0 3px var(--draw); }
+.card.destroying { animation: destroy 0.6s forwards; }
+.card.impact { animation: impact-shake 0.4s; }
+/* Card entrance -- a cheap stand-in for a true FLIP fly-in (the zones
+   fully re-render their DOM each frame, so there's no persistent element
+   to animate a real from->to transform on without a bigger rendering
+   rearchitecture -- left as a next-pass item). Kept short/subtle so it
+   reads as a "settle" rather than a distracting pop.
+   Gated behind `.entering` (added by ui.js's createCardEl only when a
+   card's logical position -- board slot or "in hand" -- actually changed
+   since the last render, see isNewPosition()) rather than applying to
+   every `.card` unconditionally: since every zone fully rebuilds its DOM
+   on every render, a blanket rule would replay this on every still-in-
+   place card after every single action, not just on real placement/
+   redraw/move. */
+@keyframes card-enter {
+  from { transform: translateY(5px) scale(0.93); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.card.entering { animation: card-enter 0.16s ease-out; }
+
+/* Flying-card FLIP animation (MTG-Arena-style fly-in on deal/play) -- see
+   ui.js's flyNewlyEnteredCards()/recordRectsBeforeWipe() for the
+   first-last-invert-play mechanics. `--fly-dx`/`--fly-dy` are the
+   old-minus-new position delta (set inline per-card in JS, since every
+   card travels a different distance -- a single shared @keyframes can't
+   hardcode that, but *can* reference it via calc() here), and `--fly-arc`
+   is a small upward lift at the midpoint of the flight so it reads as a
+   tossed card rather than a flat slide.
+   `.card.flying` takes priority over the plain `.entering` fade/scale-in
+   (higher specificity via the compound selector) -- a card that's
+   genuinely flying across the screen doesn't also need the separate
+   settle-in-place fade, the flight itself already reads as the entrance. */
+@keyframes card-fly {
+  from {
+    transform: translate(var(--fly-dx, 0px), var(--fly-dy, 0px)) scale(0.97);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate(calc(var(--fly-dx, 0px) * 0.5), calc(var(--fly-dy, 0px) * 0.5 - var(--fly-arc, 20px))) scale(1.04);
+    opacity: 1;
+  }
+  to {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+.card.flying, .card.entering.flying {
+  animation: card-fly 0.42s cubic-bezier(0.22, 0.61, 0.36, 1);
+  z-index: 60;
+  will-change: transform;
+}
+@keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes destroy { to { transform: scale(0.2) rotate(20deg); opacity: 0; } }
+@keyframes impact-shake { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+
+.island-card { width: 58px; height: 74px; }
+.island-card.mine { border-color: var(--accent); }
+.island-card.used { opacity: 0.4; }
+/* Maneuver targeting (see ui.js's renderIslands maneuverTargetIds param):
+   the player-islands panel has no `.slot` wrappers for `.slot.target-highlight`
+   to match, so mirror that same cue directly on the island cards -- same
+   pattern as `.hand-row.target-highlight .card` below for Rapid Support. */
+.island-card.target-highlight { border-color: var(--loss); box-shadow: 0 0 0 2px rgba(248,113,113,0.35); }
+.island-back { width: 58px; height: 74px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border); }
+.island-deck, .active-island { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--text-dim); }
+
+/* Owner ask: frame the active island card + its name so it reads as one
+   distinct unit now that it lives in the decluttered top-left corner.
+   Reuses existing tokens (--accent border, --bg-panel fill, the same
+   ~card radius other panels on this board already use) rather than
+   inventing a new style. */
+.active-island {
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+}
+
+/* Hand -- both hand rows (#opp-hand, #player-hand) share this base,
+   CENTERED on the board's horizontal axis (owner follow-up, mid=687:
+   "центрируешь вертикаль вееров рук"). Owner follow-up (mid=690): the fan
+   should be ADAPTIVE, not always-on -- a small hand spreads out at normal,
+   non-overlapping spacing; only a hand that would overflow the row
+   compresses into an overlapping fan. That measurement (does this exact
+   card count fit this exact container width right now?) can't be
+   expressed in CSS alone, so ui.js's layoutHandRow() computes it per
+   render/resize and writes the result into `--hand-overlap`, a custom
+   property set on the container (inherited by every `.card` child) --
+   0px (or unset) when the hand fits normally, a negative px value sized
+   so the whole hand exactly spans the available width when it doesn't.
+   `.is-fanned` (also set by layoutHandRow()) flags the compressed state
+   for the hover-neighbor-spread logic below. `flex-wrap: nowrap` keeps
+   this a single row either way -- the starting deck is 14 cards
+   (cards.js's DECK_IDS), so a wrapping hand-row used to spill to 2 tall
+   rows, the single biggest contributor to the board needing more than one
+   viewport's height. `overflow-x: auto` is a contained safety net for a
+   near-max-size hand on a very narrow phone (layoutHandRow() floors the
+   per-card visible sliver rather than crushing cards to nothing) --
+   scrolls only this one row, never the page.
+   Both hands get the same adaptive treatment (owner ask, mid=690: "оба
+   набора карт, одинаковое поведение") -- kept CLICKABLE for the player's
+   hand: each card is its own element with its own onClick (see ui.js's
+   renderHand/app.js's onPrepCardClick etc.), later DOM siblings simply
+   paint over the overlapped portion of earlier ones (no z-index needed,
+   default stacking) except the hover-focused card, which JS raises above
+   its neighbors -- see "Hover-focus" below. */
+.hand-row {
+  display: flex; gap: 6px; justify-content: center; flex-wrap: nowrap;
+  padding: 10px;
+  overflow-x: auto;
+}
+.hand-row .card {
+  flex-shrink: 0;
+  transition: transform 0.12s ease, margin-left 0.12s ease;
+}
+.hand-row .card:not(:first-child) { margin-left: var(--hand-overlap, 0px); }
+
+/* Rapid Support targeting (see ui.js's highlightHand): the hand has no
+   `.slot` wrappers for `.slot.target-highlight` to match, so mirror that
+   same cue directly on the cards while the hand row carries the class. */
+.hand-row.target-highlight .card { border-color: var(--loss); box-shadow: 0 0 0 2px rgba(248,113,113,0.35); }
+
+/* Hover-focus (owner ask, mid=690): hovering a card in a fanned hand lifts
+   it to full visibility and pushes its neighbors apart so it isn't
+   occluded by the overlap -- CSS `:hover ~ .card` only reaches *following*
+   siblings, so the neighbor push (both directions) is computed and
+   applied inline by ui.js's applyHandHover()/clearHandHover(); this class
+   only carries the hovered card's own lift/scale/stacking, which CSS
+   alone is enough for. `.hand-row .card` above already gives every card a
+   fast transform transition, so both this class toggling and the JS
+   inline transforms on neighbors animate smoothly. In normal (non-fanned)
+   mode neighbors never get pushed (nothing to reveal), but the lift still
+   reads fine on its own. */
+.hand-row .card.hover-focus {
+  transform: translateY(-14px) scale(1.15);
+  z-index: 50;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+}
+
+/* Opponent's hand -- face-down card backs only (see ui.js's renderOppHand).
+   Slightly smaller + dimmer than the player's own hand-row so it reads as
+   "information, not something you interact with" -- no hover/cursor
+   styling at all here, deliberately (these never get an onClick, so
+   nothing should look clickable). */
+.opp-hand-row { padding: 6px 10px; opacity: 0.92; }
+.opp-hand-row .card { cursor: default; }
+.opp-hand-card.face-down .card-back {
+  /* Hypercasual card-back: a simple diagonal stripe pattern in the accent
+     color rather than a flat "??" -- distinct at a glance from an empty
+     slot or a revealed card, without needing new art assets. */
+  width: 100%; height: 100%;
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(56,189,248,0.16) 0px, rgba(56,189,248,0.16) 6px,
+      transparent 6px, transparent 12px);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.controls {
+  display: flex; justify-content: center; gap: 12px;
+  padding: 12px;
+}
+
+/* Combat log -- collapsible badge/drawer (owner-reported mobile bug fix).
+   Previously a permanently-open 300px-wide fixed panel that covered ~77%
+   of a 390px mobile viewport and intercepted taps over #btn-skip once the
+   page scrolled the footer into view -- a real reproducible bug, not just
+   a visual nit. Now: `.combat-log` itself is just the small round toggle
+   badge (44px, content-sized, capped so it can never be wide), and the
+   actual entry list (`#log-entries`) is a `display:none` bottom-sheet
+   drawer that only appears while `.expanded` is toggled on by app.js's
+   tap/tap-away handler. ui.js's addLogEntry() still removes `.hidden` on
+   the first entry (see below), but since that now only reveals the tiny
+   badge -- not the drawer -- it's no longer the "permanent overlay"
+   regression it used to be. */
+.combat-log {
+  position: fixed; right: 8px; bottom: 8px;
+  max-width: min(300px, 40vw);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  z-index: 80; /* above board content, below modals (z-index 500) */
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+.combat-log-toggle {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(19,26,36,0.92);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  font-size: 1.15rem;
+  padding: 0;
+  flex-shrink: 0;
+}
+.combat-log-count {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  border-radius: 8px;
+  background: var(--accent); color: #04121c;
+  font-size: 0.5rem; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Bottom-sheet drawer -- hidden by default (collapsed state), shown only
+   while `.combat-log.expanded`. Height capped to ~20% of the viewport
+   (whichever is smaller vs. the old fixed 220px) per the fix spec, and
+   width capped by the container's own max-width above so it never grows
+   past 40vw on a narrow phone. */
+#log-entries {
+  display: none;
+  width: min(300px, 40vw);
+  max-height: min(220px, 20vh);
+  overflow-y: auto;
+  background: rgba(19,26,36,0.96);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+}
+.combat-log.expanded #log-entries { display: block; }
+.log-entry { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-dim); }
+
+.impact-flash { }
+@keyframes impact-pop {
+  0% { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+  60% { transform: translate(-50%,-50%) scale(1.3); opacity: 1; }
+  100% { transform: translate(-50%,-50%) scale(1.6); opacity: 0; }
+}
+
+/* Modals */
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 500;
+}
+.modal-inner {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 90vw; max-height: 85vh; overflow-y: auto;
+}
+.modal-inner.center { text-align: center; min-width: 320px; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.modal-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+
+.go-icon { font-size: 3rem; }
+.go-score { font-size: 1.4rem; margin: 8px 0; color: var(--accent); }
+.go-rounds { color: var(--text-dim); font-size: 0.85rem; }
+
+/* Rules matrix -- cells grown 28px -> 38px so the win/loss/draw glyphs (now
+   ~1.9x bigger via the root font-size) have breathing room instead of
+   touching the cell border. */
+table.rules-matrix { border-collapse: collapse; font-size: 0.75rem; margin: 0 auto; }
+table.rules-matrix th, table.rules-matrix td {
+  border: 1px solid var(--border);
+  width: 38px; height: 38px;
+  text-align: center;
+}
+table.rules-matrix td.win { color: var(--win); font-weight: 700; }
+table.rules-matrix td.loss { color: var(--loss); }
+table.rules-matrix td.draw { color: var(--draw); }
+table.rules-matrix td.none { color: var(--none); }
+
+.ability-list { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.ability-row { display: flex; gap: 8px; align-items: flex-start; font-size: 0.78rem; }
+.ability-emoji { font-size: 1.1rem; }
+.ability-row strong { display: block; }
+.ability-row span { color: var(--text-dim); }
+
+/* Readable reference view -- deliberately bigger cards/text than the
+   in-play board's cramped .card (see ui.js's renderReferenceView).
+   `.reference-inner` widens the base `.modal-inner` so the grid actually
+   has room to lay out multiple wide cards per row instead of collapsing
+   to a single narrow column. Tile size/grid track grown to match the ~1.9x
+   text scale (name/strength/ability font-sizes bumped below too) so a tile
+   that used to be "deliberately bigger than in-play" still reads that way
+   instead of now being roughly the same size as the grown board card. */
+.reference-inner { max-width: 760px; width: 94vw; }
+.rules-subhead { margin: 18px 0 6px; font-size: 1rem; color: var(--text); }
+.rules-subhead:first-child { margin-top: 0; }
+.rules-note { color: var(--text-dim); font-size: 0.82rem; line-height: 1.4; }
+.ref-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 14px;
+  margin-top: 8px;
+}
+.ref-card { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+.ref-card-face {
+  width: 110px; height: 144px;
+  /* .card's own transition/cursor styling doesn't apply here -- these are
+     static reference tiles, not in-play cards, so no hover/click affordance. */
+  transition: none; cursor: default;
+}
+.ref-card-face .card-emoji { font-size: 1.47rem; } /* was 2.2rem -- 1.5x shrink */
+.ref-card-face .card-name { font-size: 0.8rem; }
+.ref-card-face .card-strength { font-size: 0.75rem; }
+.ref-card-count { font-size: 0.78rem; color: var(--accent); font-weight: 700; }
+.ref-card-ability { font-size: 0.75rem; color: var(--text-dim); line-height: 1.4; }
+.ref-card-ability strong { color: var(--text); }
+
+/* Settings */
+.settings-list { display: flex; flex-direction: column; gap: 14px; min-width: 320px; }
+.settings-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.settings-row input[type="checkbox"] { margin-top: 3px; width: 24px; height: 24px; flex-shrink: 0; }
+.settings-row strong { display: block; }
+.settings-row span { color: var(--text-dim); font-size: 0.8rem; }
+
+/* Card-art toggle (settings.js's `cardArt` flag, applied globally via
+   ui.js's applyCardArtSetting toggling this class on <body>). OFF: hide
+   the emoji and tighten the card down to just name + strength -- a
+   cleaner/minimal face, per the feature request, rather than an empty
+   gap where the emoji used to be. */
+body.no-card-art .card-emoji { display: none; }
+body.no-card-art .card-face { gap: 4px; }
+body.no-card-art .card-name { font-size: 0.68rem; }
+body.no-card-art .ref-card-face .card-name { font-size: 0.85rem; }
+
+/* Narrowest phones: the grown base card (80x104/74x98) is too wide for the
+   board's zones to fit several side by side at <=480px viewport CSS pixels,
+   so this breakpoint still shrinks from the base -- but only down to a size
+   that keeps card-name/card-strength readable at the ~1.9x root scale,
+   nowhere near the old pre-pass 46x62/0.5rem (which would now read as a
+   regression back to "too small"). */
+@media (max-width: 480px) {
+  .slot, .card { width: 70px; height: 92px; }
+  .card-name { font-size: 0.6rem; }
+  .card-strength { font-size: 0.56rem; }
+  .card-emoji { font-size: 0.87rem; } /* was 1.3rem -- 1.5x shrink */
+}
+
+/* Wider viewports: text keeps growing (readability is the actual ask) but
+   card/slot PIXEL size is deliberately held near the base 80x104 instead of
+   scaling further -- letting cards balloon at desktop widths (previous pass
+   went to 116x148 at >=1200px) is what pushed the whole game screen to
+   ~1700px tall at a normal 1280x800 viewport, shoving the Ready/Auto-place
+   buttons and half the hand below the fold. Bigger text on a near-base-size
+   card is the actual "chunky hypercasual" look; a bigger card that merely
+   scales everything in proportion is a zoom, not a font fix. */
+@media (min-width: 900px) {
+  .slot, .card { width: 96px; height: 124px; }
+  .card-emoji { font-size: 1.33rem; } /* was 2rem -- 1.5x shrink */
+  .card-name { font-size: 0.8rem; }
+  .card-strength { font-size: 0.75rem; }
+}
+@media (min-width: 1200px) {
+  .slot, .card { width: 98px; height: 127px; }
+  .card-emoji { font-size: 1.53rem; } /* was 2.3rem -- 1.5x shrink */
+  .card-name { font-size: 0.86rem; }
+  .card-strength { font-size: 0.8rem; }
+}
+
+/* Rules modal -- islands section */
+.rules-subhead { margin: 16px 0 4px; font-size: 1rem; }
+.rules-note { color: var(--text-dim); font-size: 0.78rem; margin: 0 0 10px; }
+
+/* Artifacts (inventory row) -- grown to match the island-card scale ratio.
+   Left-aligned + shortened min-height to match .islands-row's badge sizing
+   now that this sits inside a compact .side-block, not a full-height side
+   column with room to spare. */
+.artifacts-row { display: flex; gap: 6px; justify-content: flex-start; align-items: center; min-height: 44px; flex-wrap: wrap; }
+.artifact-card { width: 54px; height: 54px; border-radius: 8px; border-color: var(--draw); }
+
+/* Menu buttons stack */
+.menu-inner .btn-secondary { display: block; width: 100%; }
+
+/* Campaign -- widened + minmax grown so level cards (now holding ~1.9x
+   text) don't get squeezed to an uncomfortably narrow column. */
+.campaign-inner { max-width: 760px; }
+.campaign-levels {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px; margin: 20px 0; text-align: left;
+}
+.campaign-level { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.campaign-level:not(.disabled):hover { border-color: var(--accent); }
+.campaign-cleared { margin-top: 8px; color: var(--win); font-size: 0.8rem; font-weight: 700; }
+
+/* Leaderboard */
+.leaderboard-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.leaderboard-list { min-width: 320px; }
+table.leaderboard-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+table.leaderboard-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+table.leaderboard-table tr:first-child td { color: var(--accent); font-weight: 700; }
+
+.go-campaign-note { color: var(--accent); font-size: 0.9rem; margin: 6px 0; }
+
+/* Trading Post (artifact shop) -- reuses the campaign level-select card
+   shape so the two "pick one of a grid" screens read as the same UI. */
+.shop-inner { max-width: 760px; }
+.shop-items {
+  display: grid; gap: 14px; margin: 20px 0; text-align: left;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.shop-item { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.shop-item.disabled { opacity: 0.55; }
+.shop-item .shop-buy { margin-top: 10px; width: 100%; }
+.shop-price { margin-top: 8px; font-weight: 700; }
+.shop-price.is-gold { color: #f2c14e; }
+.shop-price.is-crystal { color: #7fd7ff; }
+.shop-balance { display: flex; gap: 16px; justify-content: center; margin: 8px 0 4px; font-weight: 700; }
+.coin-gold { color: #f2c14e; }
+.coin-crystal { color: #7fd7ff; }
+.shop-hold { margin: 4px 0 14px; opacity: 0.85; }
+.hold-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.8em; opacity: 0.7; }
+.go-reward { margin-top: 6px; font-weight: 700; color: #f2c14e; }
+
+/* Online-match join form. Sized like the campaign/shop panels so the menu
+   screens stay visually interchangeable on a phone. */
+.mp-label { display: block; text-align: left; margin: 12px 0 4px; font-weight: 700; }
+.mp-input {
+  width: 100%; padding: 12px; font-size: 1rem; border-radius: 10px;
+  border: 2px solid #1b3a5c; background: #0d2138; color: #e8f2ff; box-sizing: border-box;
+}
+.mp-error { min-height: 20px; margin: 8px 0; color: #ff8a7a; font-weight: 700; }
+
+/* Campaign chart. The islands are absolutely positioned over an inline SVG
+   sea, so the whole thing scales with the box and needs no images. */
+.campaign-levels {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 2px solid #1b3a5c;
+}
+.campaign-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map-swell { fill: none; stroke: #2a6ea8; stroke-width: 0.35; opacity: 0.35; }
+.map-leg {
+  fill: none; stroke: #4a6a86; stroke-width: 0.7;
+  stroke-dasharray: 2.5 2; opacity: 0.7;
+}
+.map-leg.sailed { stroke: #ffd166; opacity: 1; }
+.map-island {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: #e8f2ff; font: inherit; text-align: center; width: 26%;
+}
+.map-island .island-shape {
+  width: 34px; height: 34px; border-radius: 50% 50% 45% 55%;
+  background: #3f9a5a; border: 3px solid #ffe9a8;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.25);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 900; font-size: 0.8rem; color: #06251a;
+}
+/* The label sits on its own plate: names are long enough to run over a
+   neighbouring route leg, and a plate keeps them readable without pushing the
+   islands further apart than the chart allows. */
+.map-island .island-label {
+  font-weight: 800; font-size: 0.72rem; line-height: 1.15;
+  padding: 2px 6px; border-radius: 6px;
+  background: rgba(4, 18, 31, 0.72);
+  /* Two lines rather than an ellipsis: a truncated island name ("2. Reef
+     Skir...") tells the player nothing, and the plate has room to wrap. */
+  max-width: 100%; overflow-wrap: break-word;
+  display: none;
+}
+.map-island.current .island-label { display: block; }
+.map-island .island-note {
+  font-size: 0.66rem; opacity: 0.9; display: none; line-height: 1.2;
+  padding: 2px 6px; border-radius: 6px; background: rgba(4, 18, 31, 0.6);
+}
+.map-island.current .island-note { display: block; }
+.map-island.cleared .island-shape { background: #2f7a49; border-color: #ffd166; }
+.map-island.locked { cursor: not-allowed; opacity: 0.5; }
+.map-island.locked .island-shape { background: #4a5b6b; border-color: #7d8b99; }
+.map-island.current .island-shape { animation: island-pulse 1.6s ease-in-out infinite; }
+@keyframes island-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(255, 209, 102, 0.25); }
+  50%      { box-shadow: 0 0 0 10px rgba(255, 209, 102, 0.05); }
+}
+.map-ship {
+  position: absolute; width: 0; height: 0; pointer-events: none;
+  transform: translate(-50%, -150%);
+  border-left: 13px solid transparent; border-right: 13px solid transparent;
+  border-bottom: 24px solid #fff3d6;
+  filter: drop-shadow(0 3px 4px #04121f);
+  animation: ship-bob 2.4s ease-in-out infinite;
+}
+@keyframes ship-bob {
+  0%, 100% { transform: translate(-50%, -150%); }
+  50%      { transform: translate(-50%, -185%); }
+}
+@media (max-width: 520px) {
+  .map-island .island-label { font-size: 0.7rem; }
+  .map-island .island-shape { width: 26px; height: 26px; }
+}
+
+/* Voyage chart -- same drawing model as the campaign chart, but the nodes are
+   destinations and only lanes out of the current position are live. */
+.voyage-inner { max-width: 860px; }
+.voyage-hud {
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 10px; font-weight: 800;
+}
+.voyage-hud .vh-name { color: #ffd166; }
+.voyage-hud .vh-stat { background: rgba(4, 18, 31, 0.6); padding: 3px 10px; border-radius: 8px; }
+.voyage-chart {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  border-radius: 14px; overflow: hidden; border: 2px solid #1b3a5c;
+}
+.voyage-lane { stroke: #33526e; stroke-width: 0.5; opacity: 0.5; fill: none; }
+.voyage-lane.sailed { stroke: #ffd166; opacity: 0.8; }
+.voyage-lane.open { stroke: #7fd1a0; stroke-width: 0.8; opacity: 1; }
+.voyage-node {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 34px; height: 34px; border-radius: 10px; padding: 0;
+  border: 3px solid #274a68; background: #0d2138;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.voyage-node:disabled { cursor: default; opacity: 0.55; }
+.voyage-node.reachable { border-color: #7fd1a0; box-shadow: 0 0 0 5px rgba(127, 209, 160, 0.16); }
+.voyage-node.cleared { background: #14402a; }
+.voyage-node.here { border-color: #ffd166; }
+.voyage-node span { display: block; width: 16px; height: 16px; border-radius: 4px; }
+.vn-port  { background: #6fbf73; }
+.vn-fleet { background: #e05c5c; border-radius: 50% !important; }
+.vn-cache { background: #ffd166; transform: rotate(45deg); }
+.vn-storm { background: #8f9bb3; border-radius: 50% 50% 20% 20% !important; }
+.vn-goal  { background: #ff9b42; width: 20px !important; height: 20px !important; }
+.voyage-ship { z-index: 3; }
+.voyage-log { min-height: 22px; margin: 10px 0; font-weight: 700; color: #cfe6ff; }
+
+/* Legend for the voyage node shapes. */
+.voyage-legend {
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  margin-top: 10px; font-size: 0.78rem; color: #bcd6f0;
+}
+.voyage-legend .vl { display: inline-flex; align-items: center; gap: 6px; }
+.voyage-legend .vl > span { width: 14px; height: 14px; border-radius: 4px; display: block; }
+
+/* Player profile. The avatar is an emoji on a coloured disc -- no images. */
+.menu-avatar { margin-right: 8px; vertical-align: middle; }
+.avatar-disc {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5); font-size: 1.2rem;
+}
+.avatar-disc.small { width: 24px; height: 24px; font-size: 0.85rem; vertical-align: middle; }
+.avatar-disc.big { width: 72px; height: 72px; font-size: 2.2rem; }
+.profile-preview {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin-bottom: 8px;
+}
+.profile-handle { font-weight: 900; font-size: 1.1rem; color: #ffd166; }
+.avatar-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 8px 0;
+}
+.avatar-choice {
+  background: none; border: 2px solid transparent; border-radius: 12px;
+  padding: 4px; cursor: pointer;
+}
+.avatar-choice.picked { border-color: #ffd166; background: rgba(255, 209, 102, 0.12); }

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sea Hunter -- Card Battle</title>
+<meta name="description" content="Sea Hunter card battle -- bare HTML, no build step, single-player vs AI.">
+<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./render/stage.css">
+<link rel="stylesheet" href="./render/input.css">
+<link rel="stylesheet" href="./render/cards.css">
+<link rel="stylesheet" href="./render/fx.css">
+<link rel="stylesheet" href="./render/islands.css">
+<link rel="stylesheet" href="./render/screens.css">
+<!-- P13 "Hero card moments" -- see render/hero.js. -->
+<link rel="stylesheet" href="./render/hero.css">
+<!-- P7 "Shell screens" -- loaded LAST so its id-scoped rules win over
+     style.css for the menu, campaign, online, shop, profile and the four
+     shell modals. See the header in render/shell.css. -->
+<link rel="stylesheet" href="./render/shell.css">
+<!-- Telegram WebApp bridge -- injects window.Telegram.WebApp when this page
+     is opened via a Telegram "Play" button. Loading it here is a no-op (and
+     never blocks page load) when opened in a plain browser: telegram.js
+     guards every access behind `window.Telegram?.WebApp`. -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<div id="loading-screen" class="screen">
+  <div class="loading-inner">
+    <div class="loading-logo"><svg class="shell-logo" width="72" height="72" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><path d="M4 40c6-7 12-7 18 0s12 7 18 0 12-7 18 0v8c-6-7-12-7-18 0s-12 7-18 0-12-7-18 0z" fill="#bfe9ff"/><path d="M4 50c6-7 12-7 18 0s12 7 18 0 12-7 18 0v8H4z" fill="#1b6ca8"/><path d="M40 12c8 0 14 6 14 14 0 5-3 9-7 11-2-6-8-9-14-8 1-9 3-14 7-17z" fill="#3d93c7"/><circle cx="45" cy="22" r="3" fill="#f4efe6"/></svg></div>
+    <div class="loading-text">Sea Hunter</div>
+  </div>
+</div>
+
+<div id="main-menu" class="screen hidden">
+  <div class="menu-inner">
+    <!-- P9 fix 7: a two-line wordmark. One line has to drop to 34px to
+         fit a 412px phone, which reads as a heading; stacked, each word
+         gets 46px and reads as a logo. The wave under it is the P7 logo
+         mark redrawn as a rule (render/shell.css paints both). -->
+    <h1 class="menu-title"><span class="wm-line wm-line-1">Sea</span><span class="wm-line wm-line-2">Hunter</span><span class="wm-rule" aria-hidden="true"></span></h1>
+    <p class="menu-sub">Vanilla-HTML card battle -- no install, works on weak connections.</p>
+    <button id="btn-start" class="btn-primary">Play vs AI</button>
+    <!-- The six in-game actions as a 2x3 grid of icon tiles. Every id
+         here is wired by ui.js/app.js and must survive unchanged. -->
+    <div class="menu-grid">
+    <button id="btn-campaign" class="btn-secondary"><span class="menu-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4"/><path d="M6 5h11l-2.5 4L17 13H6"/></svg></span><span class="menu-tile-label">Campaign</span></button>
+    <button id="btn-multiplayer" class="btn-secondary"><span class="menu-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 3 2.6 15 0 18-2.6-3-2.6-15 0-18z"/></svg></span><span class="menu-tile-label">Play online</span></button>
+    <button id="btn-profile" class="btn-secondary"><span id="menu-avatar" class="menu-avatar menu-tile-icon"></span><span id="menu-handle" class="menu-tile-label">Profile</span></button>
+    <button id="btn-shop" class="btn-secondary"><span class="menu-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a9 9 0 0 1 18 0v9H3z"/><path d="M3 13h18"/><path d="M10.5 13h3v3.5h-3z"/></svg></span><span class="menu-tile-label">Trading Post</span></button>
+    <button id="btn-leaderboard" class="btn-secondary"><span class="menu-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M12 14v4"/><path d="M8.5 20h7"/></svg></span><span class="menu-tile-label">Leaderboard</span></button>
+    <button id="btn-settings" class="btn-secondary"><span class="menu-tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/></svg></span><span class="menu-tile-label">Settings</span></button>
+    </div>
+    <a class="btn-secondary menu-hub-link" href="../seahunter-hub.html">Back to Sea Hunter hub</a>
+  </div>
+</div>
+
+<!-- Online match. The room code is the whole matchmaking mechanism: the
+     server validates ^[A-Za-z0-9_-]{4,16}$ and seats the first two clients
+     that use the same one. -->
+<!-- Voyage: the chart INSIDE one campaign mission. The fleet sails between
+     nodes, spending moves; enemy nodes hand off to the ordinary card battle
+     and return here when it ends. -->
+<div id="voyage-screen" class="screen hidden">
+  <div class="menu-inner voyage-inner">
+    <div id="voyage-hud" class="voyage-hud"></div>
+    <div id="voyage-chart" class="voyage-chart"></div>
+    <div id="voyage-legend" class="voyage-legend"></div>
+    <div id="voyage-log" class="voyage-log"></div>
+    <button id="btn-voyage-back" class="btn-secondary">Leave voyage</button>
+  </div>
+</div>
+
+<!-- Player profile: one identity (avatar + nick + tag) used by the
+     leaderboards, multiplayer seats and campaign records alike. -->
+<div id="profile-screen" class="screen hidden">
+  <div class="menu-inner">
+    <h1 class="menu-title">Captain's papers</h1>
+    <div id="profile-preview" class="profile-preview"></div>
+    <div class="mp-card">
+      <label class="mp-label" for="profile-nick">Nickname</label>
+      <input id="profile-nick" class="mp-input" maxlength="16" autocomplete="off">
+      <label class="mp-label" for="profile-tag">Tag (2-4 letters or digits)</label>
+      <input id="profile-tag" class="mp-input" maxlength="4" autocomplete="off">
+      <label class="mp-label">Avatar</label>
+      <div id="avatar-grid" class="avatar-grid"></div>
+      <div id="profile-error" class="mp-error"></div>
+    </div>
+    <button id="btn-profile-save" class="btn-primary">Save</button>
+    <button id="btn-profile-back" class="btn-secondary">Back</button>
+  </div>
+</div>
+
+<div id="mp-screen" class="screen hidden">
+  <div class="menu-inner">
+    <h1 class="menu-title">Play online</h1>
+    <p class="menu-sub">Share a room code with a friend -- whoever types the same one sits opposite you.</p>
+    <div class="mp-card">
+      <label class="mp-label" for="mp-room">Room code</label>
+      <input id="mp-room" class="mp-input" maxlength="16" placeholder="harbor01" autocomplete="off">
+      <label class="mp-label" for="mp-name">Your name</label>
+      <input id="mp-name" class="mp-input" maxlength="24" placeholder="Captain" autocomplete="off">
+      <div id="mp-error" class="mp-error"></div>
+      <p class="mp-hint"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9" stroke="currentColor" fill="none" stroke-width="1.8"/><path d="M12 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.2" fill="currentColor"/></svg><span>Sailing alone? Join anyway -- the server captain takes the empty seat after a few seconds.</span></p>
+    </div>
+    <button id="btn-mp-join" class="btn-primary">Join room</button>
+    <button id="btn-mp-bot" class="btn-secondary hidden">Play the server captain</button>
+    <button id="btn-mp-back" class="btn-secondary">Back</button>
+  </div>
+</div>
+
+<div id="campaign-screen" class="screen hidden">
+  <div class="menu-inner campaign-inner">
+    <h1 class="menu-title"><span>Campaign</span></h1>
+    <p class="menu-sub">Twenty voyages. Clear one to open the next.</p>
+    <div id="campaign-levels" class="campaign-levels"></div>
+    <div id="campaign-caption" class="map-caption"></div>
+    <button id="btn-campaign-back" class="btn-secondary">Back</button>
+  </div>
+</div>
+
+<!-- Trading Post -- the artifact SHOP screen. The right-rail
+     #player-artifacts zone stays what it always was (the in-match artifact
+     inventory you click to USE); buying happens here, between matches, so a
+     purchase never competes for the same tap as a use. Bought artifacts go
+     into the hold (economy.js) and are loaded into the next match. -->
+<div id="shop-screen" class="screen hidden">
+  <div class="menu-inner shop-inner">
+    <h1 class="menu-title">Trading Post</h1>
+    <p class="menu-sub">Gold comes from every match. Crystals only from clearing a campaign island for the first time.</p>
+    <div id="shop-balance" class="shop-balance"></div>
+    <div id="shop-items" class="shop-items"></div>
+    <div id="shop-hold" class="shop-hold"></div>
+    <button id="btn-shop-back" class="btn-secondary">Back</button>
+  </div>
+</div>
+
+<!-- P0 "Scene": the whole match is one fixed-position .stage that never
+     scrolls. Zone heights are derived from --stage-h in render/stage.css
+     (top bar / opponent strip / opponent board / centre band / player
+     board / player strip / hand), so the match always fits 100dvh on a
+     phone in portrait and sits as a centred 9:16 stage on desktop. Every
+     id the game logic reads or writes is unchanged -- only the
+     surrounding markup and classes moved. -->
+<div id="game-screen" class="screen hidden">
+ <div class="stage">
+
+  <!-- 1. Top bar -- round, score, phase, three icon buttons. -->
+  <header class="hud">
+    <div class="hud-left">
+      <span id="round-info">Round 1 / 10</span>
+      <span id="score-info">0 : 0</span>
+    </div>
+    <div class="hud-center">
+      <span id="phase-label">PREP</span>
+    </div>
+    <div class="hud-right">
+      <button id="btn-reference" class="btn-icon" title="Card &amp; island reference" aria-label="Reference">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+      </button>
+      <button id="btn-rules" class="btn-icon" title="Rules" aria-label="Rules">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h6z"/></svg>
+      </button>
+      <!-- Log -- collapsed by default: the badge only appears once there
+           is a first entry (ui.js's addLogEntry removes `hidden`), and the
+           drawer itself stays closed until app.js toggles `.expanded` on a
+           tap. Lives in the top bar per the P0 spec rather than floating
+           over the opponent's reserve row, where it used to sit on top of
+           a tappable slot. -->
+      <div id="combat-log" class="combat-log hidden">
+        <button id="combat-log-toggle" type="button" class="combat-log-toggle btn-icon" aria-expanded="false" aria-label="Combat log">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><line x1="8" y1="10" x2="15" y2="10"/><line x1="8" y1="14" x2="15" y2="14"/></svg>
+          <span id="combat-log-count" class="combat-log-count hidden">0</span>
+        </button>
+        <div id="log-entries"></div>
+      </div>
+      <button id="btn-pause" class="btn-icon" title="Menu" aria-label="Menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="3.4" height="14" rx="1"/><rect x="13.6" y="5" width="3.4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 2. Opponent strip -- avatar, name, hand count, captured islands.
+       The opponent hand is ONE card back plus a counter (see ui.js's
+       renderOppHand): a 14-wide scrolling row of face-down cards was the
+       single biggest waste of vertical space in the old layout. -->
+  <div class="opp-strip">
+    <span id="opp-avatar" class="strip-avatar"></span>
+    <span id="opp-name" class="strip-name">Opponent</span>
+    <div id="opp-hand" class="opp-hand" data-count="0"></div>
+    <div id="opp-islands" class="islands-row"></div>
+  </div>
+
+  <!-- 3. Opponent board -- reserve above front, 4 slots each. -->
+  <section class="opp-section board-zone">
+    <div id="opp-reserve" class="zone reserve-zone"></div>
+    <div id="opp-front" class="zone front-zone"></div>
+  </section>
+
+  <!-- 4. Centre band -- island deck count left, active island centre,
+       turn banner right. -->
+  <div class="centre-band">
+    <div id="island-deck-container" class="island-deck hidden">
+      <div class="card island-back"></div>
+      <span id="island-deck-count">0</span>
+    </div>
+    <div id="active-island-container" class="active-island hidden">
+      <div id="active-island-card" class="card island-card active">
+        <div class="card-inner">
+          <div class="card-face">
+            <span class="card-emoji"></span>
+            <span class="card-name"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="status-text" class="status-bar"></div>
+  </div>
+
+  <!-- 5. Player board -- front row then reserve row. `.player-section`
+       is load-bearing: ui.js's setupDropZones() selects
+       `.player-section .slot`. -->
+  <section class="player-section board-zone">
+    <div id="player-front" class="zone front-zone"></div>
+    <div id="player-reserve" class="zone reserve-zone"></div>
+  </section>
+
+  <!-- 6. Player strip -- captured islands left, artifacts right. -->
+  <div class="player-strip">
+    <div id="player-islands" class="islands-row"></div>
+    <div class="strip-right">
+      <span id="rail-balance" class="side-label-note"></span>
+      <div id="player-artifacts" class="artifacts-row"></div>
+    </div>
+  </div>
+
+  <!-- 7. Hand -- fanned with CSS transforms, never scrolls; up to 14
+       cards fit by tightening the overlap (ui.js's layoutHandRow). -->
+  <div id="player-hand" class="hand-row"></div>
+
+  <!-- Action buttons float over the top-right of the hand band (MTGA's
+       big action button sits in the same place) so they cost the stage
+       no extra height of their own. -->
+  <footer class="controls">
+    <button id="btn-auto" class="btn-secondary">Auto-place</button>
+    <button id="btn-ready" class="btn-primary" disabled>Ready</button>
+    <button id="btn-skip" class="btn-secondary hidden">Skip Turn</button>
+  </footer>
+
+  <div id="impact-overlay"></div>
+ </div>
+</div>
+
+<div id="rules-modal" class="modal hidden">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <h2>Rules -- who beats whom</h2>
+      <button id="btn-close-rules" class="btn-icon"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+    <div id="matrix-table"></div>
+  </div>
+</div>
+
+<div id="game-over-modal" class="modal hidden">
+  <div class="modal-inner center">
+    <div id="go-icon" class="go-icon"></div>
+    <h2 id="go-title"></h2>
+    <div id="go-score" class="go-score"></div>
+    <div id="go-rounds" class="go-rounds"></div>
+    <div id="go-campaign-note" class="go-campaign-note hidden"></div>
+    <div id="go-reward" class="go-reward hidden"></div>
+    <div class="modal-actions">
+      <button id="btn-play-again" class="btn-primary">Play again</button>
+      <button id="btn-go-leaderboard" class="btn-secondary">Leaderboard</button>
+      <button id="btn-go-shop" class="btn-secondary">Trading Post</button>
+      <button id="btn-back-menu" class="btn-secondary">Menu</button>
+      <!-- P8: the feedback form is reachable from here, from the pause
+           overlay and from Settings. Last in the grid and spanning both
+           columns (render/screens.css), so the four existing buttons keep
+           the two rows they were laid out for. -->
+      <button id="btn-go-feedback" class="btn-secondary">Send feedback</button>
+    </div>
+  </div>
+</div>
+
+<div id="leaderboard-modal" class="modal hidden">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <h2>Leaderboard</h2>
+      <button id="btn-close-leaderboard" class="btn-icon"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+    <div class="leaderboard-tabs">
+      <button id="lb-tab-local" class="btn-secondary">This device</button>
+      <button id="lb-tab-remote" class="btn-secondary">Global</button>
+    </div>
+    <div id="leaderboard-list" class="leaderboard-list"></div>
+  </div>
+</div>
+
+<!-- Readable reference view -- a large, legible overlay (bigger cards/text
+     than the cramped in-play board) showing the opponent's known card set
+     (revealed cards only -- see ui.js's renderReferenceView) plus the full
+     card roster and island list. Reuses cards.js/islands.js data, the same
+     source the compact rules-modal above already draws from. -->
+<div id="reference-modal" class="modal hidden">
+  <div class="modal-inner reference-inner">
+    <div class="modal-head">
+      <h2>Reference</h2>
+      <button id="btn-close-reference" class="btn-icon"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+    <div id="reference-content"></div>
+  </div>
+</div>
+
+<!-- Settings -- currently just the card-art toggle (feature 3); structured
+     as its own module (settings.js) + a dedicated content container here
+     so more settings can be appended later without touching the modal
+     shell itself. -->
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <h2>Settings</h2>
+      <button id="btn-close-settings" class="btn-icon"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+    <div id="settings-content" class="settings-content"></div>
+  </div>
+</div>
+
+<script type="module" src="./render/cards.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
