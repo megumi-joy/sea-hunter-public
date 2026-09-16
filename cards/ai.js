@@ -497,11 +497,12 @@ export async function aiTurn(state) {
   }
 
   if (kind === 'skip') {
-    state.turnOwner = 1;
-    const msg = 'AI passes';
-    state.combatLog.push(msg);
+    // No passing (owner ruling 2026-09-16): with no legal move the AI
+    // yields the round. checkRoundEnd sees turnOwner === 2 and awards it.
     const end = checkRoundEnd(state);
-    return { msg: end ? `${msg}\n${end}` : msg };
+    if (end) return { msg: end };
+    state.turnOwner = 1;
+    return { msg: '' };
   }
 
   const [, aiSlot, targetSlot] = decision;

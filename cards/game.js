@@ -379,20 +379,15 @@ export function moveReserveToFront(state, reserveSlot) {
 // a Mine remains on the front and reserve is empty). Not present in game.py --
 // added here because a bare-HTML client has no other way to recover from that
 // dead end (the Python CLI session would just keep rejecting attack commands).
+// Owner ruling 2026-09-16: passing is not a move. Kept as the explicit
+// "I cannot act" button path: it only succeeds when the player really has
+// no legal attack, and then yields the round (checkRoundEnd does that).
 export function skipTurn(state) {
   if (state.phase !== PHASE.COMBAT) return { ok: false, msg: 'Not in the combat phase!' };
   if (state.turnOwner !== 1) return { ok: false, msg: 'Not your turn!' };
-  expireOpponentTurnEffects(state);
-  state.combatLog.push('You skip your turn.');
-  state.lastAction = 'Turn skipped';
-  nextTurn(state);
-  // BUGFIX: this used to skip checkRoundEnd entirely. Combined with the
-  // deadlock detection added to checkRoundEnd() below, a mines-only /
-  // empty-reserve mutual stalemate (neither side can attack, so both sides
-  // can only ever skipTurn) now resolves as a stalemate draw instead of
-  // looping forever.
+  if (canAct(state, 1)) return { ok: false, msg: 'You still have a legal attack -- there is no passing.' };
   const end = checkRoundEnd(state);
-  return { ok: true, msg: end ? `Turn skipped.\n${end}` : 'Turn skipped.' };
+  return { ok: true, msg: end || 'You yield the round.' };
 }
 
 function removeCard(state, card, player) {
@@ -672,16 +667,30 @@ export function checkRoundEnd(state) {
   // have no legal move left for either player -- previously that round could
   // never end (only an actual kill ever called into this branch). Treat a
   // mutual deadlock the same as a mutual wipe: a draw round, no capture.
-  const deadlock = p1Alive && p2Alive && !canAct(state, 1) && !canAct(state, 2);
-  if (p1Alive && p2Alive && !deadlock) return null;
+  // Owner ruling 2026-09-16: there is no passing. The player to move who
+  // has no legal attack (only mines, or every target would sink them)
+  // yields the round to the opponent. Checked for the player whose turn
+  // it now is, after the previous action handed the turn over.
+  const mover = state.turnOwner;
+  const stuck = p1Alive && p2Alive && !canAct(state, mover);
+  if (p1Alive && p2Alive && !stuck) return null;
 
   state.phase = PHASE.ISLAND_CAPTURE;
 
-  if (deadlock || (!p1Alive && !p2Alive)) {
+  let yieldMsg = '';
+  let winner = !p1Alive && !p2Alive ? 0 : (!p2Alive ? 1 : (!p1Alive ? 2 : 0));
+  if (stuck) {
+    winner = mover === 1 ? 2 : 1;
+    yieldMsg = mover === 1
+      ? 'You have no legal attack -- you yield the round.\n'
+      : 'The AI has no legal attack -- it yields the round.\n';
+    state.combatLog.push(yieldMsg.trim());
+  }
+
+  if (winner === 0) {
     state.roundWinner = 0;
-    const reason = deadlock ? 'Neither side can act -- stalemate!' : 'The round is a draw!';
-    return `${reason} No one captures the island.\n` + executeIslandCapture(state, 0, 0);
-  } else if (!p2Alive) {
+    return 'The round is a draw! No one captures the island.\n' + executeIslandCapture(state, 0, 0);
+  } else if (winner === 1) {
     state.roundWinner = 1;
     // BUGFIX / rules edge case: if none of the winner's survivors can
     // legally capture (isCaptureEligible), auto-resolve the island-capture
@@ -690,13 +699,13 @@ export function checkRoundEnd(state) {
     // winning the round with nothing to garrison the island with means no
     // point this round, since nothing gets held.
     if (!hasEligibleCapturer(state, 1)) {
-      const msg = `You win round ${state.roundNum}!\nNo qualifying unit to garrison the island -- it goes uncaptured, and your fleet is exposed!\n`;
+      const msg = `${yieldMsg}You win round ${state.roundNum}!\nNo qualifying unit to hold the island -- it stays uncaptured.\n`;
       return msg + executeIslandCapture(state, 0, 0);
     }
-    return `You win round ${state.roundNum}!\nPick a ship or plane to capture the island!`;
+    return `${yieldMsg}You win round ${state.roundNum}!\nPick a ship or plane to capture the island!`;
   } else {
     state.roundWinner = 2;
-    const msg = `The AI wins round ${state.roundNum}!`;
+    const msg = `${yieldMsg}The AI wins round ${state.roundNum}!`;
     return msg + '\n' + executeIslandCapture(state, 2, 0);
   }
 }
@@ -878,7 +887,11 @@ function executeIslandCapture(state, winner, slot, zone = 'front') {
   state.p1Reserve = Array(RESERVE_SIZE).fill(null);
   state.p2Front = Array(FRONT_SIZE).fill(null);
   state.p2Reserve = Array(RESERVE_SIZE).fill(null);
-  state.turnOwner = rand(state) < 0.5 ? 1 : 2;
+  // Owner ruling 2026-09-16: the winner of the previous round opens the
+  // next one; the coin is tossed only for round 1 and after a drawn round.
+  state.turnOwner = state.roundWinner === 1 || state.roundWinner === 2
+    ? state.roundWinner
+    : (rand(state) < 0.5 ? 1 : 2);
   return msg + `Round ${state.roundNum} -- place your cards!`;
 }
 

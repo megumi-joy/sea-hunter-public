@@ -1198,53 +1198,6 @@
 
 
 /* ============================================================
-   P13 fix 2 -- the last-unit warning.
-
-   render/input.js's refresh() puts `.last-card` on the one remaining card
-   of a frontline that is down to a single unit in COMBAT, and
-   `.last-unit-mine` / `.last-unit-theirs` on the stage. The card gets a
-   --danger ring and a "LAST" tag; the half it belongs to gets a red inner
-   edge along its frontline side. Box-shadow, outline and a pseudo only --
-   nothing moves a slot. The turn glow above is a box-shadow on the same
-   section, so the warning is an outline instead and the two can coexist.
-   ============================================================ */
-#game-screen .card.unit-card.last-card {
-  outline: 2px solid var(--danger, #e5352b);
-  outline-offset: 1px;
-}
-/* The tag hangs off the SLOT, not the card: the card's own pseudos are all
-   taken (root ::after is the P13 specular, a face-down inner's ::after is
-   the P12 shimmer), and the opponent's last unit is usually face-down. */
-#game-screen .slot:has(.card.last-card) { position: relative; }
-#game-screen .slot:has(.card.last-card)::after {
-  content: 'LAST';
-  position: absolute;
-  left: 50%;
-  top: -6px;
-  z-index: 21;
-  transform: translateX(-50%);
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  line-height: 1.3;
-  color: #ffffff;
-  background: var(--danger, #e5352b);
-  box-shadow: 0 1px 3px rgba(40, 0, 0, 0.6);
-  pointer-events: none;
-}
-#game-screen .stage.last-unit-mine .player-section { outline: 1px solid rgba(229, 53, 43, 0.7); outline-offset: -3px; }
-#game-screen .stage.last-unit-theirs .opp-section { outline: 1px solid rgba(229, 53, 43, 0.7); outline-offset: -3px; }
-@media (prefers-reduced-motion: no-preference) {
-  #game-screen .card.unit-card.last-card { animation: sh-last-pulse 1.2s ease-in-out infinite alternate; }
-  @keyframes sh-last-pulse {
-    from { outline-color: var(--danger, #e5352b); }
-    to   { outline-color: rgba(255, 107, 93, 0.35); }
-  }
-}
-
-/* ============================================================
    P13 fix 2 -- time of day that reaches the board.
 
    P12's four skies are layers of the ocean at z-index -1, i.e. UNDER every

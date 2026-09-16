@@ -186,7 +186,7 @@ const STEPS = [
   },
   { // 7 ending the round and the coin toss
     text: (st) => (st.phase === 'ISLAND_CAPTURE'
-      ? 'Round won. Tap a ship to hold the island. A coin toss picks who starts each new round.'
+      ? 'Round won. Tap a ship to hold the island. The round winner opens the next round.'
       : 'Sink every enemy card to win the round. Finish off the Landing Craft.'),
     ready: (st) => st.phase === 'ISLAND_CAPTURE' || (idle(st) && find(st, 'opp-front', 'landing_craft') >= 0),
     done: (st) => st.phase === 'GAME_OVER' || st.roundNum > 1,
@@ -506,7 +506,7 @@ const PAGES = [
     mini('destroyer') + VS + mini('destroyer') + mini('plane') + mini('submarine') + mini('mine')],
   ['Hidden cards', 'Enemy cards start face down. A card that fights turns face up for the rest of the round. You cannot attack a face-up card you would lose to.',
     mini('back') + mini('sea_hunter', 'Revealed')],
-  ['Rounds and powers', 'Sink every enemy card to win the round, then place a ship or plane on the island. Its power works once per match. A coin toss picks who starts each round.',
+  ['Rounds and powers', 'Sink every enemy card to win the round, then place a ship or plane on the island. Its power works once per match. The round winner opens the next round; a coin toss decides only round 1 and after a draw. There is no passing: with no legal attack you yield the round.',
     mini('sea_hunter') + '<span class="tut-vs">holds</span>' + mini('radar')],
 ];
 
@@ -601,7 +601,7 @@ function hintsObserve(st) {
     showHint('Tap your island to use its power. It works once per match.');
   } else if (st.roundNum > hintSeen.round && !hintSeen.roundEnd) {
     hintSeen.roundEnd = true;
-    showHint('Round over. A coin toss picks who starts the next one.');
+    showHint('Round over. The winner opens the next round.');
   }
   hintSeen.round = Math.max(hintSeen.round, st.roundNum);
 }

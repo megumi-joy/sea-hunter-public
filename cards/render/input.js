@@ -638,8 +638,6 @@ function refresh() {
       // on its frontline in combat, that card and that side's half get the
       // danger red (render/stage.css). Recomputed every pass from the
       // state, like the glow above, because the zone DOM is rebuilt.
-      markLastUnit(st, '#player-front', inCombat && frontCount(s.p1Front) === 1, 'last-unit-mine');
-      markLastUnit(st, '#opp-front', inCombat && frontCount(s.p2Front) === 1, 'last-unit-theirs');
     }
     markKnownCards(s);
     applyHandCollapse(s.phase);
@@ -697,19 +695,6 @@ function refresh() {
   }
 }
 
-function frontCount(front) {
-  return Array.isArray(front) ? front.filter(Boolean).length : 0;
-}
-
-function markLastUnit(st, zoneSel, on, stageCls) {
-  if (st.classList.contains(stageCls) !== on) st.classList.toggle(stageCls, on);
-  document.querySelectorAll(zoneSel + ' .card.last-card').forEach((el) => {
-    if (!on) el.classList.remove('last-card');
-  });
-  if (!on) return;
-  const card = document.querySelector(zoneSel + ' .slot .card');
-  if (card && !card.classList.contains('last-card')) card.classList.add('last-card');
-}
 
 function queueRefresh() {
   if (refreshQueued) return;

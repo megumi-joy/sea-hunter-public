@@ -286,8 +286,6 @@ function updateHUD(state) {
 
   if (DOM.btnReady) DOM.btnReady.classList.toggle('hidden', state.phase !== PHASE.PREP);
   if (DOM.btnAuto) DOM.btnAuto.classList.toggle('hidden', state.phase !== PHASE.PREP);
-  const btnSkip = document.getElementById('btn-skip');
-  if (btnSkip) btnSkip.classList.toggle('hidden', !(state.phase === PHASE.COMBAT && state.turnOwner === 1));
 }
 
 // ── Card rendering ──────────────────────────────────────────────
@@ -818,7 +816,7 @@ function renderRulesMatrix() {
 function renderIslandsList() {
   let html = '<h3 class="rules-subhead">Islands -- fight to control them</h3>';
   html += '<p class="rules-note">Each round has one contested island. Win the round\'s combat, then place a qualifying ship or Plane (from your Front/Reserve, not a fresh one) onto it to capture: it garrisons the island for +1 point (Two-Island: 2) and (usually) a one-time power. Your score is the islands you currently HOLD -- win the round with no qualifying unit left and the island goes uncaptured, so that round pays nothing. First to 3 points wins.</p>';
-  html += '<p class="rules-note">Combat: there is no once-per-round limit -- the same card may attack as many times in a round as you like. Any card that attacks or is attacked is turned face-up and stays face-up for the rest of the round; nothing ever turns it back face-down. A face-down enemy card may always be attacked blind, but a face-up one only when the impact table says you WIN or both sides DRAW. Island powers are one-time for the whole match. If neither side has a legal move left, the round is a stalemate draw and no one takes the island.</p>';
+  html += '<p class="rules-note">Combat: there is no once-per-round limit -- the same card may attack as many times in a round as you like. Any card that attacks or is attacked is turned face-up and stays face-up for the rest of the round; nothing ever turns it back face-down. A face-down enemy card may always be attacked blind, but a face-up one only when the impact table says you WIN or both sides DRAW. Island powers are one-time for the whole match. There is no passing: the player to move with no legal attack yields the round to the opponent. The round winner opens the next round; the coin is tossed only for round 1 and after a drawn round.</p>';
   html += '<div class="ability-list">';
   Object.values(ISLANDS).forEach(def => {
     // icons.js has one entry per island id; an id that arrives off the wire
