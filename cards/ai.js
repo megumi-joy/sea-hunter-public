@@ -328,7 +328,7 @@ export function chooseAction(state, player, sabotaged, camouflaged) {
 export function choosePromotionSlot(state, player, sabotaged) {
   const ownFront = player === 1 ? state.p1Front : state.p2Front;
   const ownReserve = player === 1 ? state.p1Reserve : state.p2Reserve;
-  if (!ownFront.some((c) => c === null)) return null;
+  if (!ownReserve.some((c, i) => c && ownFront[i] === null)) return null;
   const opp = player === 1 ? 2 : 1;
   const oppFront = opp === 1 ? state.p1Front : state.p2Front;
   const visible = oppFront.filter((c) => c && c.faceUp);
@@ -338,6 +338,8 @@ export function choosePromotionSlot(state, player, sabotaged) {
   for (let i = 0; i < ownReserve.length; i++) {
     const c = ownReserve[i];
     if (!c || (sabotaged && sabotaged.has(c))) continue;
+    // Vertical promotion only: the front slot ahead must be free.
+    if (ownFront[i] !== null) continue;
     let v = 0.0;
     // A Mine on the Front cannot attack; only promote one as a last resort.
     if (c.def.id === 'mine') v -= 5.0;
@@ -484,7 +486,7 @@ export async function aiTurn(state) {
   if (kind === 'promote') {
     const ri = decision[1];
     const card = state.p2Reserve[ri];
-    const empty = state.p2Front.findIndex((c) => c === null);
+    const empty = ri; // straight ahead, chosen free by choosePromotionSlot
     state.p2Reserve[ri] = null;
     card.slot = empty;
     state.p2Front[empty] = card;

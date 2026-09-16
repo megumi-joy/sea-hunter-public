@@ -959,7 +959,7 @@ async function animateAttack(atkCard, defCard, result) {
     // resolveAttack() (game.js) flips card.faceUp the instant any card is
     // attacked, win or lose -- this makes that visible before the card can
     // disappear.
-    onReveal: () => flipCard(defCard),
+    onReveal: () => { flipCard(atkCard); flipCard(defCard); },
     onDestroyDefender: (result === 'WIN' || result === 'DRAW') && defEl.parentElement
       ? () => destroyCardAnimation(defEl.parentElement) : null,
     onDestroyAttacker: (result === 'LOSS' || result === 'DRAW') && atkEl.parentElement

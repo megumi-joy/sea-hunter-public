@@ -612,10 +612,11 @@ function refresh() {
     //    legality read matches moveReserveToFront()'s own preconditions:
     //    combat, your turn, a card in reserve, an empty front slot.
     const canPromote = s.phase === deps.PHASE.COMBAT && myTurn && !busy &&
-      deps.getAttackerSlot() === null && s.p1Front.includes(null);
+      deps.getAttackerSlot() === null;
     if (canPromote) {
-      document.querySelectorAll('#player-reserve .slot').forEach((el) => {
-        if (el.querySelector('.card')) el.classList.add('legal-target');
+      // Vertical only: a reserve card is legal when its own front slot is free.
+      document.querySelectorAll('#player-reserve .slot').forEach((el, i) => {
+        if (el.querySelector('.card') && s.p1Front[i] === null) el.classList.add('legal-target');
       });
     }
 

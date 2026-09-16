@@ -380,8 +380,10 @@ export function moveReserveToFront(state, reserveSlot) {
   // at all this turn, attacking or moving.
   if (card.sabotaged) return { ok: false, msg: 'This card is sabotaged and cannot act this turn!' };
 
-  const empty = state.p1Front.findIndex((c) => c === null);
-  if (empty === -1) return { ok: false, msg: 'Front is full!' };
+  // Owner rule (cardboard, same as the Godot client): a reserve card moves
+  // straight ahead into its own column, never sideways.
+  const empty = state.p1Front[reserveSlot] === null ? reserveSlot : -1;
+  if (empty === -1) return { ok: false, msg: 'The front slot ahead of it is occupied!' };
 
   state.p1Reserve[reserveSlot] = null;
   card.slot = empty;
@@ -638,8 +640,9 @@ function canAct(state, player) {
   // A non-empty Reserve only counts as a legal move if there's actually a
   // free Front slot to promote into -- moveReserveToFront() itself rejects
   // the move otherwise ("Front is full!").
-  const hasFreeFrontSlot = front.some((c) => c === null);
-  const hasReserve = hasFreeFrontSlot && reserve.some(Boolean);
+  // A reserve card only counts if the front slot straight ahead of it is
+  // free (promotion is vertical only).
+  const hasReserve = reserve.some((c, i) => c && front[i] === null);
   return hasLegalAttack || hasReserve;
 }
 
