@@ -74,7 +74,8 @@ let arcGlow = null;
 let arcLine = null;
 let arcHead = null;
 
-// Live gesture. `kind` is 'place' | 'attack'; `moved` flips once the press
+// Live gesture. `kind` is 'place' | 'move' | 'attack' ('move' drags a card
+// the player already placed, during PREP); `moved` flips once the press
 // passes MOVE_THRESHOLD and is what separates a drag from a tap.
 let drag = null;
 // Set for one task after a drag completes so the synthesized click that
@@ -570,10 +571,25 @@ function refresh() {
     // 1. Placement targets. PREP only, and only while a card is actually
     //    picked up -- by drag, or by the existing tap-to-place (app.js
     //    reports its pendingHandIdx through getPending()).
+    //    A placed card picked up (tap, or a 'move' drag) lights the same free
+    //    slots, marks itself, and marks the hand as the way back.
+    const boardPick = s.phase === deps.PHASE.PREP && deps.getBoardPick ? deps.getBoardPick() : null;
+    const moving = !!boardPick || !!(drag && drag.kind === 'move' && drag.moved);
     const picking = s.phase === deps.PHASE.PREP &&
-      (deps.getPending() !== null || (drag && drag.kind === 'place' && drag.moved));
+      (deps.getPending() !== null || moving || (drag && drag.kind === 'place' && drag.moved));
     if (picking) {
       document.querySelectorAll('.player-section .slot.empty').forEach((el) => el.classList.add('legal-target'));
+    }
+    document.querySelectorAll('#game-screen .card.prep-pick').forEach((el) => {
+      if (!boardPick || el !== boardCardEl(boardPick)) el.classList.remove('prep-pick');
+    });
+    if (boardPick) {
+      const picked = boardCardEl(boardPick);
+      if (picked && !picked.classList.contains('prep-pick')) picked.classList.add('prep-pick');
+    }
+    const handRow = document.getElementById('player-hand');
+    if (handRow && handRow.classList.contains('return-target') !== moving) {
+      handRow.classList.toggle('return-target', moving);
     }
 
     // 2. Attack / island-power targets. ui.js's highlightSlots() is what the
@@ -634,6 +650,10 @@ function refresh() {
       const theirs = inCombat && s.turnOwner === 2;
       if (st.classList.contains('turn-mine') !== mine) st.classList.toggle('turn-mine', mine);
       if (st.classList.contains('turn-theirs') !== theirs) st.classList.toggle('turn-theirs', theirs);
+      // UX1: both fleets are down -- the island band moves to a strip under
+      // the top bar (render/stage.css) and comes back to the centre for PREP.
+      const bandTop = inCombat || s.phase === 'ISLAND_CAPTURE';
+      if (st.classList.contains('band-top') !== bandTop) st.classList.toggle('band-top', bandTop);
       // P13 fix 2: the "last card" warning. When a side is down to ONE unit
       // on its frontline in combat, that card and that side's half get the
       // danger red (render/stage.css). Recomputed every pass from the
@@ -715,6 +735,31 @@ function springBack(el) {
   el.addEventListener('transitionend', () => el.classList.remove('drag-return'), { once: true });
 }
 
+function boardCardEl(pick) {
+  const zone = document.getElementById(pick.zone === 'front' ? 'player-front' : 'player-reserve');
+  const slotEl = zone ? zone.querySelector(`.slot[data-slot="${pick.slot}"]`) : null;
+  return slotEl ? slotEl.querySelector('.card') : null;
+}
+
+function overHand(x, y) {
+  const el = document.elementFromPoint(x, y);
+  if (el && el.closest && el.closest('#player-hand')) return true;
+  // The hand band itself, even where the row has no card under the pointer.
+  const row = document.getElementById('player-hand');
+  if (!row) return false;
+  const r = row.getBoundingClientRect();
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
+// A placed card dropped nowhere useful slides back into its own slot.
+function settleBoardCard(el) {
+  if (!el || !el.isConnected) return;
+  el.classList.remove('dragging');
+  el.classList.add('drag-return');
+  el.style.transform = '';
+  el.addEventListener('transitionend', () => el.classList.remove('drag-return'), { once: true });
+}
+
 function slotUnder(x, y) {
   const el = document.elementFromPoint(x, y);
   return el && el.closest ? el.closest('.slot') : null;
@@ -735,6 +780,12 @@ function onPointerDown(e) {
     queueRefresh();
     return;
   }
+  // Same for a PREP pick: a tap on open water puts the card down. The hand
+  // and the slots are left alone -- those taps return or place it.
+  if (!card && s.phase === deps.PHASE.PREP && deps.clearPrepPick
+      && !(e.target.closest && e.target.closest('.slot, #player-hand, .controls, .hud'))) {
+    deps.clearPrepPick();
+  }
   if (!card || inert()) return;
 
   if (card.closest('#player-hand') && s.phase === deps.PHASE.PREP) {
@@ -745,6 +796,18 @@ function onPointerDown(e) {
     // start here, and lifting the card is what the player just did.
     Audio.cue('card_pick');
     setHandFocus(card);
+    return;
+  }
+  // A card already placed: drag it to another free slot or back to the hand.
+  if ((card.closest('#player-front') || card.closest('#player-reserve'))
+      && s.phase === deps.PHASE.PREP && deps.canMoveBoard && deps.canMoveBoard()) {
+    const slotEl = card.closest('.slot');
+    if (!slotEl) return;
+    drag = {
+      kind: 'move', el: card,
+      from: { zone: slotEl.dataset.zone === 'front' ? 'front' : 'reserve', slot: Number(slotEl.dataset.slot) },
+      startX: e.clientX, startY: e.clientY, moved: false, pid: e.pointerId,
+    };
     return;
   }
   if (card.closest('#player-front') && s.phase === deps.PHASE.COMBAT && s.turnOwner === 1) {
@@ -770,7 +833,12 @@ function onPointerMove(e) {
   if (!drag.moved) {
     if (Math.hypot(dx, dy) < MOVE_THRESHOLD) return;
     drag.moved = true;
-    if (drag.kind === 'place') {
+    if (drag.kind === 'move') {
+      drag.el.classList.remove('drag-return');
+      drag.el.classList.add('dragging');
+      deps.setBoardPick(drag.from);
+      refresh();
+    } else if (drag.kind === 'place') {
       drag.el.classList.remove('drag-return');
       drag.el.classList.add('dragging');
       // Tell app.js which card is in the air through its own pending-card
@@ -787,11 +855,16 @@ function onPointerMove(e) {
       refresh();
     }
   }
-  if (drag.kind === 'place') {
+  if (drag.kind === 'place' || drag.kind === 'move') {
     drag.el.style.transform = `translate(${dx}px, ${dy}px) scale(1.08) rotate(0deg)`;
     document.querySelectorAll('.slot.dragover').forEach((el) => el.classList.remove('dragover'));
     const slotEl = slotUnder(e.clientX, e.clientY);
     if (slotEl && slotEl.classList.contains('legal-target')) slotEl.classList.add('dragover');
+    if (drag.kind === 'move') {
+      const row = document.getElementById('player-hand');
+      const over = !slotEl && overHand(e.clientX, e.clientY);
+      if (row && row.classList.contains('dragover') !== over) row.classList.toggle('dragover', over);
+    }
   } else {
     updateArcTo(e.clientX, e.clientY);
   }
@@ -811,6 +884,24 @@ function onPointerUp(e) {
 
   const slotEl = slotUnder(e.clientX, e.clientY);
   const legal = !!slotEl && slotEl.classList.contains('legal-target');
+
+  if (g.kind === 'move') {
+    const row = document.getElementById('player-hand');
+    if (row) row.classList.remove('dragover');
+    let done = false;
+    if (legal && slotEl.closest('.player-section')) {
+      done = deps.moveBoard(g.from, slotEl.dataset.zone === 'front' ? 'front' : 'reserve',
+        Number(slotEl.dataset.slot));
+    } else if (!slotEl && overHand(e.clientX, e.clientY)) {
+      done = deps.returnBoard(g.from);
+    }
+    if (!done) {
+      deps.setBoardPick(null);
+      settleBoardCard(g.el);
+    }
+    queueRefresh();
+    return;
+  }
 
   if (g.kind === 'place') {
     if (legal && slotEl.closest('.player-section')) {
@@ -853,7 +944,12 @@ function onPointerCancel() {
   drag = null;
   setHandFocus(null);
   if (!g.moved) return;
-  if (g.kind === 'place') { deps.setPending(null); springBack(g.el); }
+  if (g.kind === 'move') {
+    deps.setBoardPick(null);
+    settleBoardCard(g.el);
+    const row = document.getElementById('player-hand');
+    if (row) row.classList.remove('dragover');
+  } else if (g.kind === 'place') { deps.setPending(null); springBack(g.el); }
   else { deps.cancelAttack(); hideArc(); }
   queueRefresh();
 }

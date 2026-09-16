@@ -285,3 +285,46 @@
 #game-screen .hand-row.hand-expanded .card { touch-action: pan-x; }
 #game-screen .hand-row.hand-expanded .card.dragging { touch-action: none; }
 #game-screen .hand-row.hand-expanded::after { content: none; }
+
+/* ============================================================
+   PREP moves (owner 2026-09-16).
+
+   A placed card can be picked up -- a tap, or a drag -- and put into any
+   free slot of either line, or back into the hand. input.js puts
+   `.prep-pick` on the picked card, and `.return-target` on the hand row
+   while one is up (`.dragover` too, while a dragged card is over it).
+   ============================================================ */
+#game-screen .card.prep-pick {
+  outline: 2px solid var(--accent, #38bdf8);
+  outline-offset: 1px;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.55);
+  z-index: 52;
+}
+#game-screen .card.prep-pick:not(.dragging) { transform: translateY(-3px); }
+/* The hand is where the picked card goes back to. `::before` is the COMBAT
+   "HAND" pull-tab; the two never apply at once (PREP vs COMBAT). */
+#game-screen .hand-row.return-target::before {
+  content: 'Back to hand';
+  position: absolute;
+  /* Left, not centred: Auto-place / Ready float over the top right. */
+  left: 18px;
+  top: 2px;
+  z-index: 56;
+  padding: 2px 12px 3px;
+  border-radius: 8px;
+  background: rgba(9, 27, 45, 0.92);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.55);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #cfe3f5;
+  pointer-events: none;
+}
+#game-screen .hand-row.return-target {
+  box-shadow: inset 0 2px 0 rgba(56, 189, 248, 0.45);
+}
+#game-screen .hand-row.return-target.dragover {
+  background: rgba(56, 189, 248, 0.14);
+  box-shadow: inset 0 0 0 2px rgba(56, 189, 248, 0.75);
+}

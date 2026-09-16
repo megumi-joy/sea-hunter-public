@@ -143,10 +143,36 @@ export function closeIslandDetail() {
   if (open) open.remove();
 }
 
+// Owner 2026-09-16: "tap the number to see the card" stays, made clearer.
+// A captured chip (the one with the garrison number) and the contested band
+// card answer the press itself with a short 1.06 scale, 120 ms, before the
+// enlarged card opens -- so the tap visibly registers on the small target.
+// Web Animations with `composite: 'add'`, so it stacks on any transform the
+// element already has instead of replacing it.
+function pressPulse(el) {
+  if (!el || typeof el.animate !== 'function') return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }],
+    { duration: 120, easing: 'ease-out', composite: 'add' });
+}
+
+function wirePress(el) {
+  el.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button > 0) return;
+    pressPulse(el);
+  });
+}
+
+// A double tap on a chip is the same request as a single tap -- see the
+// card -- so the second tap, which lands on the scrim the first one just
+// opened, must not close it again.
+const DOUBLE_TAP_GUARD_MS = 350;
+
 export function openIslandDetail(state, islandId, handleIslandClick) {
   const def = getIslandDef(islandId);
   if (!def) return;
   closeIslandDetail();
+  const openedAt = Date.now();
   const wrap = document.createElement('div');
   wrap.id = 'island-detail';
   wrap.className = 'island-detail';
@@ -196,7 +222,9 @@ export function openIslandDetail(state, islandId, handleIslandClick) {
   panel.appendChild(actions);
   wrap.appendChild(panel);
   // Tapping the scrim (but not the panel) closes.
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) closeIslandDetail(); });
+  wrap.addEventListener('click', (e) => {
+    if (e.target === wrap && Date.now() - openedAt > DOUBLE_TAP_GUARD_MS) closeIslandDetail();
+  });
   stageEl().appendChild(wrap);
 }
 
@@ -260,6 +288,7 @@ export function flyCapture(def, fromRect, toEl, onDone) {
 
 function wireChip(el, state, islandId, handleIslandClick, maneuverTargetIds, mine) {
   const isUsed = mine && (state.p1PowersUsed || []).includes(islandId);
+  wirePress(el);
   if (!mine) {
     // Opponent chips are informational: tapping still enlarges the card (so
     // the player can read a power that is about to be used on them), but
@@ -318,6 +347,7 @@ export function render(state, handleIslandClick, maneuverTargetIds = null) {
       bandCard.innerHTML = cardHtml(def, 'active', {});
       if (!bandCard.dataset.wired) {
         bandCard.dataset.wired = '1';
+        wirePress(bandCard);
         // The contested island is nobody's yet, so this is read-only: it
         // expands to show the one-line power text and nothing else.
         bandCard.addEventListener('click', () => {

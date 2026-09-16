@@ -52,6 +52,11 @@ function isCaptureEligible(islandId, cardId) {
 // touching this file.
 export const DEFAULT_POINTS_TO_WIN = 3;
 
+// `faceUp` means REVEALED TO THE OPPONENT, for both seats. The player always
+// sees their own cards (app.js renders their zones face-up regardless);
+// the flag only says whether the other side may know the card too. Placing
+// a card never reveals it -- attacking, being attacked, Radar, Scouting and
+// Spyglass do. ai.js reads the id of a player card only when it is faceUp.
 function makeCard(id) {
   return { def: CARDS[id], faceUp: false, slot: -1 };
 }
@@ -138,7 +143,7 @@ export function autoPlace(state, player = 1) {
     if (hand.length && front[i] === null) {
       const c = hand.shift();
       c.slot = i;
-      c.faceUp = player === 1;
+      c.faceUp = false;
       front[i] = c;
     }
   }
@@ -146,7 +151,7 @@ export function autoPlace(state, player = 1) {
     if (hand.length && reserve[i] === null) {
       const c = hand.shift();
       c.slot = i;
-      c.faceUp = player === 1;
+      c.faceUp = false;
       reserve[i] = c;
     }
   }
@@ -159,7 +164,7 @@ export function placeCard(state, handIdx, zone, slot) {
   if (slot < 0 || slot >= target.length) return { ok: false, msg: 'Invalid slot' };
   if (target[slot] !== null) return { ok: false, msg: `Slot ${slot + 1} is occupied` };
   const card = state.p1Hand.splice(handIdx, 1)[0];
-  card.faceUp = true;
+  card.faceUp = false;
   card.slot = slot;
   target[slot] = card;
   return { ok: true, msg: `${card.def.emoji} ${card.def.name} -> ${zone} slot ${slot + 1}` };
@@ -179,6 +184,23 @@ export function returnCard(state, zone, slot) {
   return card;
 }
 
+// PREP only: move one of the player's placed cards to any free slot in
+// either line (owner 2026-09-16 -- a placed card slides sideways or across,
+// not only back to hand). Moving does not reveal it.
+export function moveCard(state, fromZone, fromSlot, toZone, toSlot) {
+  if (state.phase !== PHASE.PREP) return { ok: false, msg: 'Cards move only during the PREP phase!' };
+  const from = fromZone === 'front' ? state.p1Front : state.p1Reserve;
+  const to = toZone === 'front' ? state.p1Front : state.p1Reserve;
+  if (fromSlot < 0 || fromSlot >= from.length || !from[fromSlot]) return { ok: false, msg: 'No card to move' };
+  if (toSlot < 0 || toSlot >= to.length) return { ok: false, msg: 'Invalid slot' };
+  if (to[toSlot] !== null) return { ok: false, msg: `Slot ${toSlot + 1} is occupied` };
+  const card = from[fromSlot];
+  from[fromSlot] = null;
+  card.slot = toSlot;
+  to[toSlot] = card;
+  return { ok: true, msg: `${card.def.name} -> ${toZone} slot ${toSlot + 1}` };
+}
+
 export function lockIn(state) {
   if (state.phase !== PHASE.PREP) return { ok: false, msg: 'Not in the PREP phase' };
   const placed = state.p1Front.filter(Boolean).length + state.p1Reserve.filter(Boolean).length;
@@ -187,14 +209,14 @@ export function lockIn(state) {
   for (let i = 0; i < FRONT_SIZE; i++) {
     if (state.p1Front[i] === null && state.p1Hand.length) {
       const c = state.p1Hand.shift();
-      c.faceUp = true; c.slot = i;
+      c.faceUp = false; c.slot = i;
       state.p1Front[i] = c;
     }
   }
   for (let i = 0; i < RESERVE_SIZE; i++) {
     if (state.p1Reserve[i] === null && state.p1Hand.length) {
       const c = state.p1Hand.shift();
-      c.faceUp = true; c.slot = i;
+      c.faceUp = false; c.slot = i;
       state.p1Reserve[i] = c;
     }
   }
@@ -447,10 +469,8 @@ export function usePower(state, islandId, args = {}, player = 1) {
     msg = `Radar reveals: ${target.def.name}!`;
   } else if (power === 'camouflage') {
     // BUGFIX: this used to require "2 of your own face-down cards" to
-    // swap -- an unreachable precondition, since placeCard()/autoPlace()
-    // stamp the player's own cards faceUp=true the instant they're placed
-    // (see those functions above), so the human player can never actually
-    // hold a face-down card of their own. Corrected to match the real
+    // swap -- unreachable at the time, because placement then stamped the
+    // player's own cards faceUp=true. Corrected to match the real
     // card-image rule (see islands.js's CAMOUFLAGE CORRECTION note): pick
     // one of your own field cards and hide it -- the opponent cannot
     // attack it on their very next turn. Enforcement lives in
@@ -468,16 +488,15 @@ export function usePower(state, islandId, args = {}, player = 1) {
     // target, and that convention is Reserve, not Front (see IMG-toc: Radar
     // is the one power that explicitly targets "передней линии"/front line).
     // BUGFIX (F4, SEAHUNTER_QA_FINDINGS.md): this used to deploy to Front.
-    // Bounds + reserve-full ordering mirror game.py's use_power; the
-    // faceUp convention is the browser's own (`player === 1`, exactly as
-    // autoPlace()/aiDeploy() stamp cards) rather than game.py's blanket
-    // face_up = False, which would deploy the HUMAN's card face-down.
+    // Bounds + reserve-full ordering mirror game.py's use_power, and so
+    // does face_up = False: a deployed card is hidden from the opponent
+    // (see makeCard for what faceUp means).
     const handIdx = args.handIdx ?? args.hand_idx ?? 0;
     if (!(handIdx >= 0 && handIdx < ownHand.length)) return { ok: false, msg: 'Hand error' };
     const empty = ownReserve.findIndex((c) => c === null);
     if (empty === -1) return { ok: false, msg: 'Reserve is full' };
     const c = ownHand.splice(handIdx, 1)[0];
-    c.faceUp = player === 1;
+    c.faceUp = false;
     c.slot = empty;
     ownReserve[empty] = c;
     msg = 'Rapid support deployed to Reserve!';

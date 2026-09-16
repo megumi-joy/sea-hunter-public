@@ -96,7 +96,8 @@ export function observe(state) {
   t.revealMax = Math.max(t.revealMax, shown);
 
   ['p1Front', 'p1Reserve', 'p2Front', 'p2Reserve'].forEach((k) => {
-    (state[k] || []).forEach((c) => { if (c && c.faceUp && c.def) t.seenCards.add(c.def.id); });
+    // The player always sees their own cards; the opponent's only once revealed.
+    (state[k] || []).forEach((c) => { if (c && c.def && (c.faceUp || k.startsWith('p1'))) t.seenCards.add(c.def.id); });
   });
   if (state.activeIsland) t.seenIslands.add(state.activeIsland);
 

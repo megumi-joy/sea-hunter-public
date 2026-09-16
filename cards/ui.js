@@ -493,6 +493,10 @@ function renderZone(container, cards, faceUp, onClick) {
     slotEl.dataset.zone = zoneName;
     if (card) {
       const cardEl = createCardEl(card, faceUp || card.faceUp, { positionKey: `${side}-${zoneName}:${slot}` });
+      // The player's own zones render face-up (`faceUp` here), but card.faceUp
+      // says whether the OPPONENT has seen the card (game.js's makeCard). A
+      // card still hidden from them is drawn veiled -- render/cards.css.
+      if (faceUp && !card.faceUp) cardEl.classList.add('own-hidden');
       if (onClick) {
         cardEl.style.cursor = 'pointer';
         cardEl.addEventListener('click', () => onClick(slot, card));
@@ -727,6 +731,9 @@ function highlightHand(on) {
 // already showing its face.
 function flipCard(card) {
   const el = findCardEl(card.uid);
+  // One of the player's own veiled cards being attacked: nothing to turn
+  // over, the veil lifts (render/cards.css fades it).
+  if (el && el.classList.contains('own-hidden')) { el.classList.remove('own-hidden'); return; }
   if (!el || !el.classList.contains('face-down')) return;
   // P3: the innerHTML swap itself is unchanged (render/cards.js depends on
   // flipCard staying an innerHTML-only swap) -- FX.flip just wraps it in a

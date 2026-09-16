@@ -5,10 +5,13 @@
 // strength and ability text -- so the illustration a player has only ever
 // seen at 52px is, for a beat, the whole screen.
 //
-//   1. Inspect. Press and hold any face-up unit card or island card on the
-//      match stage for 400 ms (or long-press / right-click it, which fires
-//      `contextmenu`). The hero stays up until tapped. A face-down card is
-//      never shown: holding it must not reveal it.
+//   1. Inspect. Double-tap any face-up unit card -- on the board or in the
+//      hand, in every phase -- or right-click it. Outside PREP a 400 ms
+//      press and hold (or a long-press `contextmenu`) does the same, and
+//      islands open by hold as well. In PREP a hold does nothing at all
+//      (owner 2026-09-16: a long press there sent a placed card back to
+//      hand by accident). The hero stays up until tapped. A face-down card
+//      is never shown: pressing it must not reveal it.
 //   2. Capture. render/screens.js shows the captured island here for a
 //      beat before the P4 ceremony flies it to its row -- from the hero
 //      card's rect, so the flight starts where the eye already is.
@@ -34,10 +37,14 @@ import { buildCardEl } from './cards.js';
 
 const HOLD_MS = 400;
 const MOVE_TOLERANCE = 6;     // px; matches render/input.js's drag threshold
+const DOUBLE_TAP_MS = 320;    // second tap must land within this of the first
+const DOUBLE_TAP_PX = 28;
 const WIDTH_FRACTION = 0.6;
 
 let current = null;           // { el, media, timer, onDone }
-let press = null;             // { timer, x, y, pid, target }
+let press = null;             // { timer, x, y, pid, found, key }
+let lastTap = null;           // { key, t, x, y } -- the previous clean tap
+let lastPointerType = '';
 // Set when a hold opens the hero; the click the browser synthesizes when
 // that same finger lifts is swallowed, then the flag clears on a timer
 // after the pointerup (render/input.js's swallowClick uses the same order:
@@ -228,11 +235,25 @@ function inspectableDef(target) {
   return null;
 }
 
+// Which card a tap landed on, stable across the re-render the first tap of
+// a double tap may cause (ui.js rebuilds the zones, so element identity is
+// not): the uid ui.js stamps on unit cards.
+function tapKey(target) {
+  const unit = target && target.closest ? target.closest('.card.unit-card[data-uid]') : null;
+  return unit ? 'u' + unit.dataset.uid : null;
+}
+
+function inPrep() {
+  return !!(deps && deps.getPhase && deps.getPhase() === 'PREP');
+}
+
 function inspect(found) {
   // Whatever gesture render/input.js had started on this press (a hand card
   // picked up, an attacker armed) is abandoned: the player was reading, not
-  // playing.
+  // playing. A double tap's FIRST tap has already run as a normal tap, so
+  // what it selected is dropped too.
   if (deps && deps.abortGesture) deps.abortGesture();
+  if (deps && deps.clearSelection) deps.clearSelection();
   // And the click the browser synthesizes when the finger lifts must neither
   // reach ui.js's tap handler as a placement or an attack nor land on the
   // hero it just opened and close it again.
@@ -251,20 +272,49 @@ function cancelPress() {
 }
 
 function onDown(e) {
+  lastPointerType = e.pointerType || '';
   if (e.button !== undefined && e.button > 0) return;
   if (current) return;
   const found = inspectableDef(e.target);
-  if (!found) return;
+  if (!found) { lastTap = null; return; }
   cancelPress();
   press = {
-    x: e.clientX, y: e.clientY, pid: e.pointerId,
-    timer: setTimeout(() => { press = null; inspect(found); }, HOLD_MS),
+    x: e.clientX, y: e.clientY, pid: e.pointerId, found, key: tapKey(e.target), moved: false,
+    // No hold in PREP: there a press is placement, and a long one did
+    // things the player never asked for.
+    timer: inPrep() ? 0 : setTimeout(() => { press = null; lastTap = null; inspect(found); }, HOLD_MS),
   };
 }
 
 function onMove(e) {
   if (!press || (press.pid !== undefined && e.pointerId !== press.pid)) return;
-  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) >= MOVE_TOLERANCE) cancelPress();
+  if (Math.hypot(e.clientX - press.x, e.clientY - press.y) >= MOVE_TOLERANCE) {
+    clearTimeout(press.timer);
+    press.moved = true;
+  }
+}
+
+// A clean tap (no drag, released before any hold fired) on a unit card.
+// Two of them on the same card inside DOUBLE_TAP_MS open the hero. The
+// second tap's click is swallowed so it neither re-runs the tap handler
+// nor lands on the hero and closes it.
+function onUp(e) {
+  if (!press || (press.pid !== undefined && e.pointerId !== press.pid)) return;
+  const p = press;
+  cancelPress();
+  if (p.moved || !p.key || current) { lastTap = null; return; }
+  const now = Date.now();
+  if (lastTap && lastTap.key === p.key && now - lastTap.t <= DOUBLE_TAP_MS
+      && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= DOUBLE_TAP_PX) {
+    lastTap = null;
+    // The first tap may have re-rendered the card; look it up again so a
+    // card that has since gone face-down is still never shown.
+    const el = document.querySelector(`#game-screen .card.unit-card[data-uid="${p.key.slice(1)}"]`);
+    const found = el ? inspectableDef(el) : p.found;
+    if (found) inspect(found);
+    return;
+  }
+  lastTap = { key: p.key, t: now, x: e.clientX, y: e.clientY };
 }
 
 export function init(d) {
@@ -274,11 +324,10 @@ export function init(d) {
   host.addEventListener('pointerdown', onDown, true);
   window.addEventListener('pointermove', onMove, { passive: true });
   const release = () => {
-    cancelPress();
     if (swallowClick) setTimeout(() => { swallowClick = false; }, 0);
   };
-  window.addEventListener('pointerup', release);
-  window.addEventListener('pointercancel', release);
+  window.addEventListener('pointerup', (e) => { onUp(e); release(); });
+  window.addEventListener('pointercancel', () => { cancelPress(); lastTap = null; release(); });
   // Android Chrome fires contextmenu on a long-press, desktop on a right
   // click; either way it is the same request. Swallowed only over a card
   // that can be inspected, so the page keeps its menu everywhere else.
@@ -286,6 +335,9 @@ export function init(d) {
     const found = inspectableDef(e.target);
     if (!found) return;
     e.preventDefault();
+    // A touch long-press in PREP is a hold like any other: it does nothing.
+    // A right click (mouse) still opens the card in every phase.
+    if (inPrep() && lastPointerType !== 'mouse') return;
     cancelPress();
     if (!current) inspect(found);
   });

@@ -1,6 +1,6 @@
 import { store } from './store.js';
 import { ISLANDS, getIslandDef } from './islands.js';
-import { PHASE, createGameState, usePower, placeCard, lockIn, autoPlace, moveReserveToFront, checkRoundEnd, playerCaptureIsland, returnCard, playerAttack, skipTurn } from './game.js';
+import { PHASE, createGameState, usePower, placeCard, lockIn, autoPlace, moveReserveToFront, checkRoundEnd, playerCaptureIsland, returnCard, moveCard, playerAttack, skipTurn } from './game.js';
 import * as UI from './ui.js';
 import { aiTurn, aiDeploy } from './ai.js';
 import { mpActive, mpUsePower, mpConnect, mpDisconnect, mpSetHandlers,
@@ -516,6 +516,8 @@ function onHandCardClick(idx, card) {
     }
   }
   if (store.state.phase === PHASE.PREP) {
+    // A placed card is picked up: tapping the hand puts it back there.
+    if (boardPick) { returnPickedCard(); return; }
     pendingHandIdx = idx;
     UI.setStatus(`${card.def.name} -- click an empty slot to place.`);
     // Tap-to-place is the fallback for P2's drag placement and lights the
@@ -528,9 +530,53 @@ function onHandCardClick(idx, card) {
 }
 
 let pendingHandIdx = null;
+// PREP: a placed card picked up by a tap ({ zone, slot }), waiting for a
+// free slot to move to or for the hand to take it back. Owner 2026-09-16:
+// tapping a placed card used to send it straight back to hand, which a
+// press that ran long did without the player meaning it.
+let boardPick = null;
+
+function setBoardPick(pick) {
+  boardPick = pick;
+  if (pick) pendingHandIdx = null;
+}
+
+function clearPrepPick() {
+  if (pendingHandIdx === null && !boardPick) return;
+  pendingHandIdx = null;
+  boardPick = null;
+  Input.refresh();
+}
+
+function moveBoardCard(from, zone, slot) {
+  if (!store.state || store.state.phase !== PHASE.PREP || mpActive) return false;
+  const res = moveCard(store.state, from.zone, from.slot, zone, slot);
+  boardPick = null;
+  UI.setStatus(res.msg);
+  if (res.ok) renderAll();
+  else Input.refresh();
+  return res.ok;
+}
+
+function returnBoardCard(from) {
+  if (!store.state || store.state.phase !== PHASE.PREP || mpActive) return false;
+  boardPick = null;
+  const returned = returnCard(store.state, from.zone, from.slot);
+  if (!returned) { Input.refresh(); return false; }
+  renderAll();
+  updateReadyButton();
+  UI.setStatus(`${returned.def.name} returned to hand`);
+  return true;
+}
+
+function returnPickedCard() {
+  if (boardPick) returnBoardCard(boardPick);
+}
 
 function onPrepEmptySlotClick(zone, slot) {
-  if (pendingHandIdx === null || !store.state || store.state.phase !== PHASE.PREP) return;
+  if (!store.state || store.state.phase !== PHASE.PREP) return;
+  if (boardPick) { moveBoardCard(boardPick, zone, slot); return; }
+  if (pendingHandIdx === null) return;
   if (mpActive) { mpPlace(pendingHandIdx, zone, slot); pendingHandIdx = null; return; }
   const res = placeCard(store.state, pendingHandIdx, zone, slot);
   UI.setStatus(res.msg);
@@ -545,12 +591,15 @@ function onPrepCardClick(slot, card) {
   // The wire protocol has no "unplace": placement is final in a network match.
   if (mpActive) { UI.setStatus('Placement is final in a network match.'); return; }
   const zone = store.state.p1Front.includes(card) ? 'front' : 'reserve';
-  const returned = returnCard(store.state, zone, slot);
-  if (returned) {
-    renderAll();
-    updateReadyButton();
-    UI.setStatus(`${card.def.name} returned to hand`);
+  // Tap the picked card again to put it down where it is.
+  if (boardPick && boardPick.zone === zone && boardPick.slot === slot) {
+    clearPrepPick();
+    UI.setStatus(`${card.def.name} stays in place.`);
+    return;
   }
+  setBoardPick({ zone, slot });
+  UI.setStatus(`${card.def.name} -- tap a free slot to move it, or your hand to take it back.`);
+  Input.refresh();
 }
 
 function updateReadyButton() {
@@ -1078,14 +1127,30 @@ function initEvents() {
     },
     cancelAttack,
     getPending: () => pendingHandIdx,
-    setPending: (idx) => { pendingHandIdx = idx; },
-    placeFromHand: (idx, zone, slot) => { pendingHandIdx = idx; onPrepEmptySlotClick(zone, slot); },
+    setPending: (idx) => { pendingHandIdx = idx; if (idx !== null) boardPick = null; },
+    placeFromHand: (idx, zone, slot) => { boardPick = null; pendingHandIdx = idx; onPrepEmptySlotClick(zone, slot); },
+    // PREP moves of an already placed card (drag, or tap then tap).
+    canMoveBoard: () => !mpActive,
+    getBoardPick: () => boardPick,
+    setBoardPick,
+    clearPrepPick,
+    moveBoard: moveBoardCard,
+    returnBoard: returnBoardCard,
   });
   // P13: hold a face-up card for 400 ms to see it at hero size. Hero owns
   // no rules either; it only needs to drop whatever gesture input.js had
   // started on the same press, and a way to build a big island card.
   Hero.init({
     abortGesture: Input.abortGesture,
+    getPhase: () => (store.state ? store.state.phase : null),
+    // A double tap opens the hero; whatever its first tap selected (a hand
+    // card, a placed card, an attacker) is dropped.
+    clearSelection: () => {
+      const picked = pendingHandIdx !== null || !!boardPick;
+      clearPrepPick();
+      if (picked) UI.setStatus('');
+      cancelAttack();
+    },
     buildIsland: (def) => buildIslandEl(def, 'big', {}),
   });
 
@@ -1100,8 +1165,13 @@ function initEvents() {
     .forEach(() => {}); // slots are re-rendered each frame; click delegation used instead
 
   document.body.addEventListener('click', (e) => {
+    if (boardPick && store.state && store.state.phase === PHASE.PREP
+        && e.target.closest('#player-hand') && !e.target.closest('.card')) {
+      returnPickedCard();
+      return;
+    }
     const slotEl = e.target.closest('.slot.empty');
-    if (!slotEl || pendingHandIdx === null) return;
+    if (!slotEl || (pendingHandIdx === null && !boardPick)) return;
     const zone = slotEl.dataset.zone;
     const slot = parseInt(slotEl.dataset.slot, 10);
     onPrepEmptySlotClick(zone, slot);
@@ -1517,6 +1587,11 @@ function trackRoundEnd(state) {
 
 export function renderAll() {
   if (!store.state) return;
+  // A picked-up placed card only lives while PREP does and its slot holds it.
+  if (boardPick && (store.state.phase !== PHASE.PREP
+      || !(boardPick.zone === 'front' ? store.state.p1Front : store.state.p1Reserve)[boardPick.slot])) {
+    boardPick = null;
+  }
   trackRoundEnd(store.state);
   Progress.observe(store.state);
   UI.updateHUD(store.state);

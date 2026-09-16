@@ -26,10 +26,10 @@
 //   2. Island powers. usePower() takes a `player` argument now, so
 //      choosePower() is wired into aiTurn() below and the seat-2 AI really
 //      uses its island powers -- as the Python bot already does.
-//      NOTE: radar and scouting can never fire for seat 2 in practice --
-//      both require a FACE-DOWN opponent card, and P1's own cards are stamped
-//      faceUp=true the moment they are placed. The AI's reachable powers are
-//      sabotage, camouflage and rapid_support.
+//      Radar and scouting need a FACE-DOWN opponent card. Since 2026-09-16
+//      placement no longer reveals P1's cards (faceUp means "revealed to the
+//      opponent" for both seats -- see game.js's makeCard), so all of them
+//      are reachable for seat 2.
 //
 //   3. Island capture. game.js exposes setCaptureChooser(), and this file
 //      registers chooseCapture() with it at import scope below, so the AI
@@ -427,13 +427,13 @@ export function aiDeploy(state, player) {
   frontCards.slice(0, FRONT_SIZE).forEach((card, slot) => {
     take(card);
     card.slot = slot;
-    card.faceUp = player === 1;
+    card.faceUp = false;
     front[slot] = card;
   });
   reserveCards.slice(0, RESERVE_SIZE).forEach((card, slot) => {
     take(card);
     card.slot = slot;
-    card.faceUp = player === 1;
+    card.faceUp = false;
     reserve[slot] = card;
   });
 }

@@ -33,22 +33,42 @@
                after the five fixed-height zones.
    On a 1512x794 desktop the width rule alone would ask for 131px-tall
    slots and overflow the stage by ~90px, so the height clamp is what
-   keeps desktop honest; on a 412x915 phone the width rule wins. */
+   keeps desktop honest; on a 412x915 phone the width rule wins.
+
+   UX1 (owner 2026-09-16, "bigger cards"): the width rule is now "four
+   slots and three gaps fill the stage less 8px" rather than 22% each
+   (412px: 90.6 -> 98px wide), and the height rule counts the hand as a
+   fifth card row instead of a fixed 140px band, so it is not circular
+   (--hand-h follows from --slot-h, never the other way). The chrome paid
+   for it: top bar 44 -> 38, opponent strip 64 -> 40, island band
+   72 -> 54, player strip 40 -> 32. Whatever height the four board rows
+   leave goes to the hand, whose cards may grow up to 16% past a slot
+   (--hand-card-h) -- on a 412x915 phone that is 90.6 -> 114px wide. */
 #game-screen,
 #game-screen.screen {
   --gap: 4px;
-  --hud-h: 44px;
-  --opp-strip-h: 64px;
-  --centre-h: 72px;
-  --player-strip-h: 40px;
-  --hand-h: 140px;
-  --fixed-h: calc(var(--hud-h) + var(--opp-strip-h) + var(--centre-h) + var(--player-strip-h) + var(--hand-h));
+  --hud-h: 38px;
+  --opp-strip-h: 40px;
+  --centre-h: 54px;
+  --player-strip-h: 32px;
+  --chrome-h: calc(var(--hud-h) + var(--opp-strip-h) + var(--centre-h) + var(--player-strip-h));
+  /* Room above a hand card for the fan's arc lift and the action buttons. */
+  --hand-pad: 14px;
 
   --stage-w: 100vw;
   --stage-h: 100dvh;
-  --board-h: calc((var(--stage-h) - var(--fixed-h) - 6 * var(--gap)) / 2);
-  --slot-h: min(calc(var(--stage-w) * 0.22 * 4 / 3), calc((var(--board-h) - var(--gap)) / 2));
+  --slot-h: min(
+    calc((var(--stage-w) - 8px - 3 * var(--gap)) / 4 * 4 / 3),
+    calc((var(--stage-h) - var(--chrome-h) - var(--hand-pad) - 8 * var(--gap)) / 5)
+  );
   --slot-w: calc(var(--slot-h) * 3 / 4);
+  --hand-card-h: min(
+    calc(var(--slot-h) * 1.16),
+    calc(var(--stage-h) - var(--chrome-h) - 4 * var(--slot-h) - 8 * var(--gap) - var(--hand-pad))
+  );
+  --hand-h: calc(var(--hand-card-h) + var(--hand-pad));
+  --fixed-h: calc(var(--chrome-h) + var(--hand-h));
+  --board-h: calc((var(--stage-h) - var(--fixed-h) - 6 * var(--gap)) / 2);
 
   position: fixed;
   inset: 0;
@@ -597,6 +617,7 @@
     );
     /* Headroom for the P2 fan lift (12px arc + 18px focus lift) so a
        raised hand card stays inside its own row. */
+    --hand-card-h: var(--slot-h);
     --hand-h: calc(var(--slot-h) + 30px);
 
     --stage-w: 100vw;
@@ -758,10 +779,11 @@
     --slot-h: min(
       calc(var(--stage-w) * 0.22 * 4 / 3),
       calc((var(--stage-h) - var(--hud-h) - var(--opp-strip-h) - var(--centre-h)
-            - var(--player-strip-h) - 40px - 8 * var(--gap)) / 5)
+            - var(--player-strip-h) - 24px - 8 * var(--gap)) / 5)
     );
     --slot-w: calc(var(--slot-h) * 3 / 4);
-    --hand-h: calc(var(--slot-h) + 40px);
+    --hand-card-h: var(--slot-h);
+    --hand-h: calc(var(--slot-h) + 24px);
 
     /* Vignette on the full-viewport parent, not on .stage -- .stage clips
        its own overflow, so painted there it would darken the board instead
@@ -1249,4 +1271,93 @@
     radial-gradient(90% 40% at 50% 0%, rgba(150, 180, 240, 0.16), rgba(150, 180, 240, 0) 70%),
     radial-gradient(120% 80% at 50% 50%, rgba(2, 8, 24, 0) 45%, rgba(2, 8, 24, 0.42) 100%),
     linear-gradient(180deg, rgba(4, 12, 40, 0.40), rgba(4, 12, 40, 0.40));
+}
+
+
+/* ============================================================
+   UX1 (owner 2026-09-16) -- bigger cards, and the island band goes to
+   the top once the fleets are placed.
+
+   Sizes: see the stage sizing block at the top of this file. What follows
+   is what those numbers need from the rows themselves.
+   ============================================================ */
+
+/* The hand's cards are sized off --hand-card-h, not the board's slot. Set
+   on the row itself, so every `var(--slot-w)` / `var(--slot-h)` below it
+   (stage.css's `.card`, cards.css's --uc-w, input.css's collapse travel)
+   reads the hand size without a rule of its own. */
+#game-screen #player-hand {
+  --slot-h: var(--hand-card-h);
+  --slot-w: calc(var(--hand-card-h) * 3 / 4);
+}
+
+@media (orientation: portrait), (min-height: 601px) {
+
+/* Four slots plus three gaps fill the stage less 8px (the width rule at the
+   top): 2px of section margin and 2px of zone padding a side. */
+#game-screen .board-zone { padding: 0 2px; }
+#game-screen .opp-section,
+#game-screen .player-section { margin: 0 2px; }
+
+/* Slimmer chrome rows. */
+#game-screen .hud { padding: 0 6px; }
+#game-screen .btn-icon,
+#game-screen .combat-log-toggle { width: 28px; height: 28px; }
+#game-screen .strip-avatar { width: 26px; height: 26px; font-size: 12px; }
+#game-screen .opp-hand { width: 22px; height: 30px; }
+#game-screen .opp-hand::after { bottom: -3px; }
+/* 46px card + 2px frame padding + 2px frame border (style.css) = the band. */
+#game-screen .active-island { padding: 2px 6px; position: relative; z-index: 1; }
+#game-screen .active-island .island-card.ic-card { width: 92px; height: 46px; }
+#game-screen .centre-band { padding: 0 6px; }
+/* The deck back and its count side by side: stacked they need 48px of a
+   54px band and the count went under the rope edge. */
+#game-screen .island-deck { flex-direction: row; gap: 4px; }
+#game-screen .island-back { width: 22px; height: 30px; }
+
+/* ---- The island band moves to the top in COMBAT ----------------------
+   render/input.js puts `.band-top` on the stage for COMBAT and
+   ISLAND_CAPTURE. Transforms only, so no grid row and no slot changes size
+   and the FLIP card flights are not disturbed: the band slides up to sit
+   right under the top bar, and the opponent strip and board slide down by
+   the band's height into the room it left. The two front lines then meet
+   directly. --board-h is the 1fr row height (same equation the grid
+   solves), so the travel is exact. */
+#game-screen .centre-band,
+#game-screen .opp-strip {
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* Keeps the turn glow's own box-shadow fade (P9 fix 6, above). */
+#game-screen .opp-section {
+  transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 0.25s ease;
+}
+#game-screen .centre-band { z-index: 4; }
+#game-screen .stage.band-top .centre-band {
+  transform: translateY(calc(-1 * (var(--opp-strip-h) + var(--board-h) + 2 * var(--gap))));
+}
+#game-screen .stage.band-top .opp-strip,
+#game-screen .stage.band-top .opp-section {
+  transform: translateY(calc(var(--centre-h) + var(--gap)));
+}
+/* At the top the band is a strip, not the battle line: a flatter plank and
+   no waterline glow. */
+#game-screen .stage.band-top .centre-band {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 226, 176, 0.25),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(2, 12, 24, 0.35);
+}
+
+}
+
+/* The idle breathing (P12, above) is a transform animation on the hand row,
+   and an animation beats a static transform -- so the COMBAT collapse
+   (render/input.css `.hand-collapsed`, a translateY) never actually moved
+   the row. Stop breathing while collapsed. */
+#game-screen .hand-row.hand-collapsed { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #game-screen .centre-band,
+  #game-screen .opp-strip,
+  #game-screen .opp-section { transition: none; }
 }

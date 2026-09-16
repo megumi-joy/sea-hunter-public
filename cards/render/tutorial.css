@@ -320,3 +320,8 @@
   .tut-ring, .tut-dot, .tut-hint { animation: none; }
   .tut-track { transition: none; }
 }
+
+/* UX1: in COMBAT the island band is a strip right under the top bar
+   (render/stage.css `.band-top`), which is where a hint used to sit. Drop
+   the hint below it. */
+body:has(#game-screen .stage.band-top) .tut-hint { top: calc(50px + 58px); }

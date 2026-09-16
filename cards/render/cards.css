@@ -721,3 +721,43 @@ body.no-card-art .card.unit-card .uc-img { display: none; }
     linear-gradient(315deg, rgba(38, 22, 2, 0.92) 0 4.2px, rgba(150, 108, 30, 0.95) 4.2px 5.6px, rgba(0, 0, 0, 0) 5.6px) right bottom / 14px 14px no-repeat,
     radial-gradient(46% 30% at 14% 5%, rgba(255, 246, 214, 0.36), rgba(255, 255, 255, 0) 72%);
 }
+
+/* ============================================================
+   Own hidden cards (owner 2026-09-16).
+
+   The opponent sees a player's face-down card as a back; the player sees
+   the face, and until now could not tell which of their cards the opponent
+   has already seen. ui.js's renderZone puts `own-hidden` on a player card
+   whose `faceUp` (game.js: "revealed to the opponent") is still false.
+   Such a card keeps its full frame, badge and name -- only the art window
+   is dimmed to ~55% under a faint hatch, with an eye-off mark in the top
+   right corner. Revealing it drops the class and the art fades back up.
+   ============================================================ */
+.card.unit-card .uc-art > .uc-svg,
+.card.unit-card .uc-art > .uc-img { transition: opacity 0.35s ease; }
+.card.unit-card.own-hidden .uc-art > .uc-svg,
+.card.unit-card.own-hidden .uc-art > .uc-img { opacity: 0.55; }
+.card.unit-card.own-hidden .uc-art {
+  background:
+    repeating-linear-gradient(135deg, rgba(8, 26, 48, 0.34) 0 2px, rgba(8, 26, 48, 0) 2px 6px),
+    linear-gradient(180deg, #5d7f99, #34506a);
+}
+.card.unit-card.own-hidden > .uc-inner::after {
+  content: '';
+  position: absolute;
+  top: 0.22em;
+  right: 0.22em;
+  z-index: 4;
+  width: 1.45em;
+  height: 1.45em;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23eaf4fb' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12s3.4-6 9-6c1.6 0 3 .5 4.2 1.2M21 12s-3.4 6-9 6c-1.6 0-3-.5-4.2-1.2'/%3E%3Ccircle cx='12' cy='12' r='2.6'/%3E%3Cpath d='M4 20L20 4'/%3E%3C/svg%3E") center / 72% no-repeat,
+    rgba(6, 22, 40, 0.72);
+  box-shadow: 0 0 0 1px rgba(234, 244, 251, 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.unit-card .uc-art > .uc-svg,
+  .card.unit-card .uc-art > .uc-img { transition: none; }
+}
