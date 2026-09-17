@@ -90,7 +90,7 @@ function showScreen(name) {
 }
 
 // Room-code join form. Both players type the same code; a player left alone
-// gets a server-side bot after a few seconds, so the screen never dead-ends.
+// can take on the server-side bot with the "Play the server captain" button.
 // Voyage chart -- the map INSIDE one campaign mission. Same drawing approach
 // as the campaign chart (inline SVG sea, HTML nodes on top), but the nodes are
 // destinations the fleet sails between, and only the ones linked to the

@@ -804,7 +804,8 @@ function saveProfileFromForm() {
 // ── Multiplayer ─────────────────────────────────────────────────────
 // Room codes are what the server validates (^[A-Za-z0-9_-]{4,16}$), so the
 // same string both players type is the whole matchmaking mechanism. A lone
-// player is given a server-side bot after a few seconds rather than hanging.
+// player waits; the server-side bot joins only through the opt-in
+// "Play the server captain" button.
 // Remembered across the error -> close pair the server sends on a refusal.
 let lastMpError = '';
 

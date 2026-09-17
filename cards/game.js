@@ -880,6 +880,12 @@ function executeIslandCapture(state, winner, slot, zone = 'front') {
   state.p2Discard = [];
 
   state.roundNum += 1;
+  // The field went back to the hands above: clear the board BEFORE a possible
+  // game over, or at GAME_OVER the same cards sat both on the board and in hand.
+  state.p1Front = Array(FRONT_SIZE).fill(null);
+  state.p1Reserve = Array(RESERVE_SIZE).fill(null);
+  state.p2Front = Array(FRONT_SIZE).fill(null);
+  state.p2Reserve = Array(RESERVE_SIZE).fill(null);
   const pointsToWin = state.pointsToWin || DEFAULT_POINTS_TO_WIN;
   if (state.score[0] >= pointsToWin || state.score[1] >= pointsToWin) {
     state.winReason = 'points';
@@ -892,10 +898,6 @@ function executeIslandCapture(state, winner, slot, zone = 'front') {
 
   drawIsland(state);
   state.phase = PHASE.PREP;
-  state.p1Front = Array(FRONT_SIZE).fill(null);
-  state.p1Reserve = Array(RESERVE_SIZE).fill(null);
-  state.p2Front = Array(FRONT_SIZE).fill(null);
-  state.p2Reserve = Array(RESERVE_SIZE).fill(null);
   // Owner ruling 2026-09-16: the winner of the previous round opens the
   // next one; the coin is tossed only for round 1 and after a drawn round.
   state.turnOwner = state.roundWinner === 1 || state.roundWinner === 2
