@@ -495,7 +495,7 @@ const PAGES = [
     mini('battleship') + mini('cruiser') + mini('patrol_ship')],
   ['Attack', 'On your turn, drag a frontline card onto an enemy card. Among ships, higher strength wins. A card may attack every turn.',
     mini('cruiser') + VS + mini('destroyer', 'Sunk')],
-  ['Draws and odd ones', 'Same against same: both sink, no tie-break. Planes beat every ship, Submarines sink big ships, Mines never attack.',
+  ['Draws and odd ones', 'Same against same: both sink, no tie-break. Planes sink small ships and Artillery but fall to the Cruiser and Battleship. Submarines sink the big ships, Sea Hunters and Destroyers sink Submarines. Mines never attack; only a Landing Craft clears one safely.',
     mini('destroyer') + VS + mini('destroyer') + mini('plane') + mini('submarine') + mini('mine')],
   ['Hidden cards', 'Enemy cards start face down. A card that fights turns face up for the rest of the round. You cannot attack a face-up card you would lose to.',
     mini('back') + mini('sea_hunter', 'Revealed')],

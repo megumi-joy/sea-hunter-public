@@ -26,6 +26,10 @@ export const CARDS = {
 };
 
 // Impact matrix: IMPACT[attacker][defender] -> 'WIN' | 'LOSS' | 'DRAW' | 'NONE'
+// Read off the PRINTED CARDS (Sea_Hunter_cards.png: light icons = destroys,
+// dark = destroyed by), 2026-09-17. An August 'correction' had flipped eight
+// cells the wrong way (plane vs artillery/battleship/cruiser, landing craft vs
+// mine) and corvette vs submarine had been wrong since February.
 // Originally ported from src/games/sea_hunter/cards.py (the committed Python
 // backend). CROSS-VERIFIED against the authoritative Godot source of truth
 // at /home/yip/Documents/GitHub/sea-hunter/resources/cards/*.tres (each
@@ -36,16 +40,16 @@ export const CARDS = {
 // attacker WINS if attacker.destroys includes defender; attacker LOSES if
 // defender.destroys includes attacker; both apply -> DRAW; neither -> NONE.
 export const IMPACT = {
-  plane:             { plane:'DRAW', coastal_artillery:'LOSS', battleship:'WIN',  cruiser:'WIN',  destroyer:'WIN',  patrol_ship:'WIN',  sea_hunter:'WIN',  landing_craft:'NONE', submarine:'NONE', mine:'NONE' },
-  coastal_artillery: { plane:'WIN',  coastal_artillery:'DRAW', battleship:'WIN',  cruiser:'WIN',  destroyer:'WIN',  patrol_ship:'WIN',  sea_hunter:'WIN',  landing_craft:'LOSS', submarine:'NONE', mine:'NONE' },
-  battleship:        { plane:'LOSS', coastal_artillery:'LOSS', battleship:'DRAW', cruiser:'WIN',  destroyer:'WIN',  patrol_ship:'WIN',  sea_hunter:'WIN',  landing_craft:'WIN',  submarine:'LOSS', mine:'DRAW' },
-  cruiser:           { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'DRAW', destroyer:'WIN',  patrol_ship:'WIN',  sea_hunter:'WIN',  landing_craft:'WIN',  submarine:'LOSS', mine:'DRAW' },
-  destroyer:         { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'LOSS', destroyer:'DRAW', patrol_ship:'WIN',  sea_hunter:'WIN',  landing_craft:'WIN',  submarine:'WIN',  mine:'DRAW' },
-  patrol_ship:       { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'LOSS', destroyer:'LOSS', patrol_ship:'DRAW', sea_hunter:'WIN',  landing_craft:'WIN',  submarine:'WIN',  mine:'DRAW' },
-  sea_hunter:        { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'LOSS', destroyer:'LOSS', patrol_ship:'LOSS', sea_hunter:'DRAW', landing_craft:'WIN',  submarine:'WIN',  mine:'DRAW' },
-  landing_craft:     { plane:'NONE', coastal_artillery:'WIN',  battleship:'LOSS', cruiser:'LOSS', destroyer:'LOSS', patrol_ship:'LOSS', sea_hunter:'LOSS', landing_craft:'DRAW', submarine:'NONE', mine:'LOSS' },
-  submarine:         { plane:'NONE', coastal_artillery:'NONE', battleship:'WIN',  cruiser:'WIN',  destroyer:'LOSS', patrol_ship:'LOSS', sea_hunter:'LOSS', landing_craft:'NONE', submarine:'DRAW', mine:'DRAW' },
-  mine:              { plane:'NONE', coastal_artillery:'NONE', battleship:'DRAW', cruiser:'DRAW', destroyer:'DRAW', patrol_ship:'DRAW', sea_hunter:'DRAW', landing_craft:'WIN',  submarine:'DRAW', mine:'NONE' },
+  plane:             { plane:'DRAW', coastal_artillery:'WIN', battleship:'LOSS', cruiser:'LOSS', destroyer:'WIN', patrol_ship:'WIN', sea_hunter:'WIN', landing_craft:'NONE', submarine:'NONE', mine:'NONE' },
+  coastal_artillery: { plane:'LOSS', coastal_artillery:'DRAW', battleship:'WIN', cruiser:'WIN', destroyer:'WIN', patrol_ship:'WIN', sea_hunter:'WIN', landing_craft:'LOSS', submarine:'NONE', mine:'NONE' },
+  battleship:        { plane:'WIN', coastal_artillery:'LOSS', battleship:'DRAW', cruiser:'WIN', destroyer:'WIN', patrol_ship:'WIN', sea_hunter:'WIN', landing_craft:'WIN', submarine:'LOSS', mine:'DRAW' },
+  cruiser:           { plane:'WIN', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'DRAW', destroyer:'WIN', patrol_ship:'WIN', sea_hunter:'WIN', landing_craft:'WIN', submarine:'LOSS', mine:'DRAW' },
+  destroyer:         { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'LOSS', destroyer:'DRAW', patrol_ship:'WIN', sea_hunter:'WIN', landing_craft:'WIN', submarine:'WIN', mine:'DRAW' },
+  patrol_ship:       { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'LOSS', destroyer:'LOSS', patrol_ship:'DRAW', sea_hunter:'WIN', landing_craft:'WIN', submarine:'LOSS', mine:'DRAW' },
+  sea_hunter:        { plane:'LOSS', coastal_artillery:'LOSS', battleship:'LOSS', cruiser:'LOSS', destroyer:'LOSS', patrol_ship:'LOSS', sea_hunter:'DRAW', landing_craft:'WIN', submarine:'WIN', mine:'DRAW' },
+  landing_craft:     { plane:'NONE', coastal_artillery:'WIN', battleship:'LOSS', cruiser:'LOSS', destroyer:'LOSS', patrol_ship:'LOSS', sea_hunter:'LOSS', landing_craft:'DRAW', submarine:'NONE', mine:'WIN' },
+  submarine:         { plane:'NONE', coastal_artillery:'NONE', battleship:'WIN', cruiser:'WIN', destroyer:'LOSS', patrol_ship:'WIN', sea_hunter:'LOSS', landing_craft:'NONE', submarine:'DRAW', mine:'DRAW' },
+  mine:              { plane:'NONE', coastal_artillery:'NONE', battleship:'DRAW', cruiser:'DRAW', destroyer:'DRAW', patrol_ship:'DRAW', sea_hunter:'DRAW', landing_craft:'LOSS', submarine:'DRAW', mine:'NONE' },
 };
 
 // Deck composition: one copy each of every canonical unit (10 total -- see
