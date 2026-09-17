@@ -10,8 +10,8 @@
 // Nothing here decides a rule. Every move in the guided match goes through
 // app.js's own handlers (a skipped step taps the same elements a player
 // would), and the AI plays with ai.js unchanged: the board below is simply
-// chosen so that ai.js's deterministic policy makes the same three replies
-// every time (checked against its scoring constants; see stageBoard).
+// chosen so that ai.js's deterministic policy makes the same replies
+// every time (traced through its scoring constants; see stageBoard).
 //
 // URL flags: ?tutorial=1 forces the guided match behind Play for this page
 // load, ?tutorial=0 never offers it, ?demo=howto opens the primer.
@@ -48,33 +48,42 @@ function track(event, data) { Telemetry.gameplay(event, data); }
 
 // ---- the scripted board ------------------------------------------------
 //
-// Player: Destroyer and Patrol Ship on the frontline, Sea Hunter in reserve,
-// a Cruiser in hand, and Radar Station already held (so a one-time power
-// can be taught inside one round). First to 2 islands.
-// Enemy: Patrol Ship + Destroyer on the frontline, Sea Hunter + Landing
-// Craft in reserve, all face down. The player moves first.
+// Slots are counted from 1 here.
+// Player: Patrol Ship (slot 1) and Destroyer (slot 3) on the frontline, a
+// Sea Hunter in reserve, a Cruiser in hand, and Radar already held (so a
+// one-time power can be taught inside one round). First to 2 islands. Every
+// player card is face down: the AI knows only what has fought.
+// Enemy: Patrol Ship, Destroyer and Landing Craft on the frontline (slots
+// 1-3), a Sea Hunter (slot 1) and a Mine (slot 2) in reserve, all face down.
+// The player moves first.
 //
-// What ai.js does with that, turn by turn (its choices have no randomness):
+// What ai.js does with that, turn by turn (no randomness; every player card
+// it may target is face down or a sure loss, so scoreAttack ranks attackers
+// by expectedVsUnknown over the public pool and breaks the tie between equal
+// hidden targets on the lowest slot):
 //   1 you: Cruiser sinks their Patrol Ship (4 beats 2)
-//   2 AI:  their Destroyer sinks your Patrol Ship (score 3.24, the best)
-//   3 you: Destroyer into Destroyer, both sink (draw)
-//   4 AI:  no attacker left, promotes Sea Hunter (-0.85 beats -1.0)
-//   5 you: Cruiser attacks again and sinks the hidden Sea Hunter
-//   6 AI:  promotes its last card, the Landing Craft
-//   7 you: Radar reveals it
-//   8 AI:  a face-up Landing Craft may not attack a Cruiser -- it passes
-//   9 you: Cruiser sinks it, round won, a ship garrisons the island: 2 - 0
+//   2 AI:  Destroyer (blind score 1.39) beats Landing Craft (-0.90); both
+//          hidden targets score the same, so it hits slot 1: your Patrol Ship
+//   3 you: Destroyer into their face-up Destroyer, both sink (draw)
+//   4 AI:  its Landing Craft may not attack your face-up Cruiser (a loss), so
+//          it promotes straight ahead: Sea Hunter (-0.85) over Mine (-5.0)
+//   5 you: Cruiser sinks the still-hidden Sea Hunter
+//   6 AI:  still no legal attack, promotes its last reserve card, the Mine
+//   7 you: Radar reveals the Mine. That ends your turn, and the AI has no
+//          legal attack (a Mine never attacks, the Landing Craft would lose)
+//          and nothing left to promote: it yields the round
+//   8 you: a ship garrisons the island: 2 - 0, match won
 function card(id, slot, faceUp) { return { def: CARDS[id], faceUp, slot }; }
 
 function stageBoard(st) {
   st.tutorial = true;
   st.turnOwner = 1;
-  st.p1Hand = [card('cruiser', -1, true)];
-  st.p1Front = [card('destroyer', 0, true), null, card('patrol_ship', 2, true), null];
-  st.p1Reserve = [card('sea_hunter', 0, true), null, null, null];
+  st.p1Hand = [card('cruiser', -1, false)];
+  st.p1Front = [card('patrol_ship', 0, false), null, card('destroyer', 2, false), null];
+  st.p1Reserve = [card('sea_hunter', 0, false), null, null, null];
   st.p2Hand = [];
-  st.p2Front = [card('patrol_ship', 0, false), card('destroyer', 1, false), null, null];
-  st.p2Reserve = [card('sea_hunter', 0, false), card('landing_craft', 1, false), null, null];
+  st.p2Front = [card('patrol_ship', 0, false), card('destroyer', 1, false), card('landing_craft', 2, false), null];
+  st.p2Reserve = [card('sea_hunter', 0, false), card('mine', 1, false), null, null];
   st.activeIsland = 'scouting';
   st.islandDeck = st.islandDeck.filter((id) => id !== 'radar' && id !== 'scouting');
   st.p1Islands = ['radar'];
@@ -99,7 +108,7 @@ export function interceptPlay() {
 
 // ---- guided steps --------------------------------------------------------
 
-const STEP_NAMES = ['hand', 'play', 'attack', 'draw', 'reveal', 'island', 'round', 'win'];
+const STEP_NAMES = ['hand', 'play', 'attack', 'draw', 'promote', 'island', 'yield', 'win'];
 
 const zoneArr = (st, id) => ({
   'player-front': st.p1Front, 'player-reserve': st.p1Reserve,
@@ -137,7 +146,7 @@ const STEPS = [
     },
   },
   { // 2 playing a unit
-    text: 'Your fleet is set and the enemy hides theirs. Tap Ready. Every move you make ends your turn.',
+    text: 'The enemy sees your cards only once they fight. Tap Ready. Each move ends your turn.',
     ready: (st) => st.phase === 'PREP' && find(st, 'player-front', 'cruiser') >= 0,
     done: (st) => st.phase !== 'PREP',
     focus: () => [$('#player-front'), $('#player-reserve'), $('#btn-ready')],
@@ -145,70 +154,54 @@ const STEPS = [
     auto: () => click($('#btn-ready')),
   },
   { // 3 strength and the attack
-    text: 'Among ships, the higher strength wins. Drag your Cruiser (4) onto the marked enemy card.',
+    text: 'Higher strength wins. Drag your Cruiser (4) onto the marked enemy frontline card.',
     ready: (st) => idle(st) && find(st, 'opp-front', 'patrol_ship') >= 0 && find(st, 'player-front', 'cruiser') >= 0,
     done: (st) => !enemyHas(st, 'patrol_ship'),
     ...attackStep('cruiser', 'patrol_ship'),
   },
   { // 4 what a draw means
-    text: 'Equal ships sink each other: a draw, no tie-break. Attack their Destroyer with yours.',
+    text: 'Equal ships sink each other: a draw. Attack their face-up Destroyer with yours.',
     ready: (st) => idle(st) && find(st, 'player-front', 'destroyer') >= 0
       && st.p2Front.some((c) => c && c.def.id === 'destroyer' && c.faceUp),
     done: (st) => !enemyHas(st, 'destroyer'),
     ...attackStep('destroyer', 'destroyer'),
   },
-  { // 5 hidden cards and reveal
-    text: 'Enemy cards stay hidden until they fight, then stay face up. Your Cruiser can attack again.',
+  { // 5 a reserve card moves up, still hidden
+    text: 'A reserve card moved straight up. It is still hidden: sink it with your Cruiser.',
     ready: (st) => idle(st) && find(st, 'opp-front', 'sea_hunter') >= 0 && find(st, 'player-front', 'cruiser') >= 0,
     done: (st) => !enemyHas(st, 'sea_hunter'),
-    ...attackStep('cruiser', 'sea_hunter'),
+    focus: (st) => [slotOf('opp-reserve', 0), ...attackStep('cruiser', 'sea_hunter').focus(st)],
+    point: (st) => attackStep('cruiser', 'sea_hunter').point(st),
+    auto: (st) => attackStep('cruiser', 'sea_hunter').auto(st),
   },
   { // 6 the island and its one-time power
-    text: 'You hold Radar. Tap it, then tap the hidden card. An island power works once per match.',
-    ready: (st) => idle(st) && find(st, 'opp-front', 'landing_craft') >= 0 && !st.p1PowersUsed.includes('radar'),
+    text: 'Tap your Radar island, then the card that just moved up. Powers work once per match.',
+    ready: (st) => idle(st) && find(st, 'opp-front', 'mine') >= 0 && !st.p1PowersUsed.includes('radar'),
     done: (st) => st.p1PowersUsed.includes('radar'),
     focus: (st) => {
-      const lc = slotOf('opp-front', find(st, 'opp-front', 'landing_craft'));
-      if (deps.store.activeIslandPower) return [lc];
+      const mine = slotOf('opp-front', find(st, 'opp-front', 'mine'));
+      if (deps.store.activeIslandPower) return [mine];
       return [$('#island-detail .island-detail-panel'), $('#player-islands [data-island-id="radar"]') || $('#player-islands')];
     },
     point: (st) => {
-      if (deps.store.activeIslandPower) return [null, slotOf('opp-front', find(st, 'opp-front', 'landing_craft'))];
+      if (deps.store.activeIslandPower) return [null, slotOf('opp-front', find(st, 'opp-front', 'mine'))];
       return [null, $('#island-detail .ic-use') || $('#player-islands [data-island-id="radar"]')];
     },
-    auto: (st) => {
+    auto: () => {
       if (!deps.store.activeIslandPower) {
         if (!$('#island-detail')) click($('#player-islands [data-island-id="radar"]'));
         click($('#island-detail .ic-use'));
       }
-      setTimeout(() => click(cardEl('opp-front', find(deps.store.state, 'opp-front', 'landing_craft'))), 80);
+      setTimeout(() => click(cardEl('opp-front', find(deps.store.state, 'opp-front', 'mine'))), 80);
     },
   },
-  { // 7 ending the round and the coin toss
-    text: (st) => (st.phase === 'ISLAND_CAPTURE'
-      ? 'Round won. Tap a ship to hold the island. The round winner opens the next round.'
-      : 'Sink every enemy card to win the round. Finish off the Landing Craft.'),
-    ready: (st) => st.phase === 'ISLAND_CAPTURE' || (idle(st) && find(st, 'opp-front', 'landing_craft') >= 0),
+  { // 7 the enemy yields, the island is taken
+    text: 'No legal move left for them: they yield the round. Tap your Cruiser to hold the island.',
+    ready: (st) => st.phase === 'ISLAND_CAPTURE' && !deps.store.combatLocked,
     done: (st) => st.phase === 'GAME_OVER' || st.roundNum > 1,
-    focus: (st) => (st.phase === 'ISLAND_CAPTURE'
-      ? [$('#player-front'), $('#player-reserve'), $('#active-island-container')]
-      : attackStep('cruiser', 'landing_craft').focus(st)),
-    point: (st) => (st.phase === 'ISLAND_CAPTURE'
-      ? [null, cardEl('player-front', find(st, 'player-front', 'cruiser'))]
-      : attackStep('cruiser', 'landing_craft').point(st)),
-    // One skip covers both halves: the last attack, then the garrison pick
-    // once the engine has moved to ISLAND_CAPTURE.
-    auto: (st) => {
-      const capture = () => click(cardEl('player-front', find(deps.store.state, 'player-front', 'cruiser')));
-      if (st.phase === 'ISLAND_CAPTURE') { capture(); return; }
-      attackStep('cruiser', 'landing_craft').auto(st);
-      let tries = 0;
-      const poll = setInterval(() => {
-        const now = deps.store.state;
-        if (now && now.phase === 'ISLAND_CAPTURE' && !deps.store.combatLocked) { clearInterval(poll); capture(); }
-        if (++tries > 40 || !active) clearInterval(poll);
-      }, 150);
-    },
+    focus: () => [$('#player-front'), $('#player-reserve'), $('#active-island-container')],
+    point: (st) => [null, cardEl('player-front', find(st, 'player-front', 'cruiser'))],
+    auto: (st) => click(cardEl('player-front', find(st, 'player-front', 'cruiser'))),
   },
   { // 8 winning
     text: 'Two islands held: you win. Real matches are first to 3 islands.',
@@ -452,7 +445,7 @@ function guardUp(e) {
 
 const READY_RULES = [
   ['cruiser', 'A card can attack on every one of your turns. There is no limit per round.'],
-  ['destroyer', 'Equal ships sink each other. There is no tie-break.'],
+  ['destroyer', 'An empty frontline loses the round. The reserve never fights, it only moves straight up.'],
   ['radar', 'Each island power works once per match. Pick the moment.'],
 ];
 
@@ -506,7 +499,7 @@ const PAGES = [
     mini('destroyer') + VS + mini('destroyer') + mini('plane') + mini('submarine') + mini('mine')],
   ['Hidden cards', 'Enemy cards start face down. A card that fights turns face up for the rest of the round. You cannot attack a face-up card you would lose to.',
     mini('back') + mini('sea_hunter', 'Revealed')],
-  ['Rounds and powers', 'Sink every enemy card to win the round, then place a ship or plane on the island. Its power works once per match. The round winner opens the next round; a coin toss decides only round 1 and after a draw. There is no passing: with no legal attack you yield the round.',
+  ['Rounds and powers', 'Empty the enemy frontline to win the round; the reserve never fights, it only moves straight ahead into a free slot. Then place a ship or plane on the island. Its power works once per match. The round winner opens the next round; a coin toss decides only round 1 and after a draw. There is no passing: with no legal attack you yield the round.',
     mini('sea_hunter') + '<span class="tut-vs">holds</span>' + mini('radar')],
 ];
 

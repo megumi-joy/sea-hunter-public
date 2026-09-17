@@ -924,7 +924,9 @@ function onPointerUp(e) {
   }
 
   if (legal && (slotEl.closest('#opp-front') || slotEl.closest('#opp-reserve'))) {
-    // onOppCardClick re-checks the legal row itself before attacking.
+    // onOppCardClick decides: an attack only ever lands on the frontline
+    // (the reserve never fights); a reserve drop only matters to a live
+    // island-power or artifact pick.
     deps.attackTarget(slotEl.closest('#opp-reserve') ? 'reserve' : 'front',
       Number(slotEl.dataset.slot), null);
   } else {

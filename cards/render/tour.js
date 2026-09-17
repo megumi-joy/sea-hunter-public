@@ -327,8 +327,8 @@ async function walk(deps) {
         + (st() ? st().phase : 'none') + ')';
       break;
     }
-    const frontAlive = st().p2Front.some(Boolean);
-    const row = frontAlive ? st().p2Front : st().p2Reserve;
+    // Only the enemy frontline is ever attacked (an empty one ends the round).
+    const row = st().p2Front;
     const defSlot = row.findIndex(Boolean);
     if (defSlot < 0) { stopped = 'the opponent had no card left to attack'; break; }
     const atkSlot = st().p1Front.findIndex(
@@ -347,7 +347,7 @@ async function walk(deps) {
     if (deps.getAttackerSlot() !== atkSlot) {
       deps.onPlayerCardClick(atkSlot, st().p1Front[atkSlot]);
     }
-    deps.onOppCardClick(frontAlive ? 'front' : 'reserve', defSlot, row[defSlot]);
+    deps.onOppCardClick('front', defSlot, row[defSlot]);
     // doAttack sets store.combatLocked synchronously, before its first
     // await, exactly when it has a real attack to animate -- so this is a
     // check that there IS an effect to photograph, not a hope that there is.

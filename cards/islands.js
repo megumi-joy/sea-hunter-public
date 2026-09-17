@@ -7,7 +7,8 @@
 //  - Islands are drawn from a SEPARATE deck (`state.islandDeck`, shuffled from
 //    Object.keys(ISLANDS)) -- one island is "active" (contested) per round.
 //  - Players do not buy or place islands; they FIGHT for the active island by
-//    winning that round's combat (clearing the opponent's Front + Reserve).
+//    winning that round's combat (emptying the opponent's Front -- the
+//    Reserve never fights, owner ruling 2026-09-16).
 //    The round winner then CAPTURES the island by placing a qualifying unit
 //    from their Frontline/Reserve onto it -- see isCaptureEligible() /
 //    CAPTURE_ELIGIBLE_BY_ISLAND in game.js (currently the same eligible-unit

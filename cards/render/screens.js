@@ -123,12 +123,20 @@ function deriveResult(state, prev) {
   // single-player state carries roundWinner, so this refinement is local.
   if (!winner && (state.roundWinner === 1 || state.roundWinner === 2)) winner = state.roundWinner;
 
-  const text = (prev.status + ' ' + statusNow() + ' ' + recentLog()).toLowerCase();
+  // The engine's own combat log keeps the round's last lines (a yield is
+  // logged there, not always on the status line), local matches only.
+  const lastLog = (state.combatLog || []).slice(-2).join(' ');
+  const text = (prev.status + ' ' + statusNow() + ' ' + recentLog() + ' ' + lastLog).toLowerCase();
   let reason;
   if (/surrender|forfeit|disconnect/.test(text)) reason = 'Surrender';
   else if (/stalemate|cannot act|neither side/.test(text)) reason = 'Stalemate -- neither fleet could act';
+  // No passing (owner ruling 2026-09-16): the side to move with no legal
+  // move yields the round (game.js's checkRoundEnd logs "yields the round").
+  else if (/yields? the round/.test(text)) reason = 'No legal move -- the round was yielded';
+  // Otherwise the round ended on an emptied frontline; the reserve never
+  // counts. A draw that empties both frontlines at once is a drawn round.
   else if (winner) reason = 'Frontline cleared';
-  else reason = 'Both fleets destroyed';
+  else reason = 'Both frontlines cleared';
 
   return {
     round: prev.roundNum,

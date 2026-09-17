@@ -122,7 +122,7 @@ export function createGameState(difficulty = 2, opts = {}) {
     p2Artifacts: [],
     p1Shielded: false,
     p1LuckyAttack: false,
-    skipTurnP1: false,
+    // Kraken Bait artifact (artifacts.js): the AI loses its next turn.
     skipTurnP2: false,
     roundWinner: 0,
     winReason: '',
@@ -230,14 +230,10 @@ export function lockIn(state) {
 }
 
 function checkSkips(state) {
-  if (state.turnOwner === 1 && state.skipTurnP1) {
-    state.skipTurnP1 = false;
-    state.turnOwner = 2;
-    state.combatLog.push('Fog: player skips a turn!');
-  } else if (state.turnOwner === 2 && state.skipTurnP2) {
+  if (state.turnOwner === 2 && state.skipTurnP2) {
     state.skipTurnP2 = false;
     state.turnOwner = 1;
-    state.combatLog.push('Fog: AI skips a turn!');
+    state.combatLog.push('Kraken Bait: the AI skips a turn!');
   }
 }
 
@@ -338,8 +334,10 @@ export function playerAttack(state, atkSlot, defSlot) {
   // handled by expireTurnEffects() in nextTurn() above.
   if (atk.sabotaged) return { ok: false, msg: 'This card is sabotaged and cannot act this turn!' };
 
-  const oppFrontAlive = state.p2Front.some(Boolean);
-  const dfn = oppFrontAlive ? (state.p2Front[defSlot] || null) : (state.p2Reserve[defSlot] || null);
+  // Owner ruling 2026-09-16: only the enemy FRONTLINE is ever attacked. The
+  // reserve never fights -- once the frontline is empty the round is over
+  // (see checkRoundEnd), so there is no reserve fallback to fall back to.
+  const dfn = state.p2Front[defSlot] || null;
   if (!dfn) return { ok: false, msg: 'No target!' };
   if (dfn.camouflaged) return { ok: false, msg: 'That card is camouflaged and cannot be attacked this turn!' };
 
@@ -397,21 +395,6 @@ export function moveReserveToFront(state, reserveSlot) {
   // end via a reserve-to-front move even when it left one side unable to act.
   const end = checkRoundEnd(state);
   return { ok: true, msg: end ? `${msg}\n${end}` : msg };
-}
-
-// Safety valve: lets the player pass when no card can legally attack (e.g. only
-// a Mine remains on the front and reserve is empty). Not present in game.py --
-// added here because a bare-HTML client has no other way to recover from that
-// dead end (the Python CLI session would just keep rejecting attack commands).
-// Owner ruling 2026-09-16: passing is not a move. Kept as the explicit
-// "I cannot act" button path: it only succeeds when the player really has
-// no legal attack, and then yields the round (checkRoundEnd does that).
-export function skipTurn(state) {
-  if (state.phase !== PHASE.COMBAT) return { ok: false, msg: 'Not in the combat phase!' };
-  if (state.turnOwner !== 1) return { ok: false, msg: 'Not your turn!' };
-  if (canAct(state, 1)) return { ok: false, msg: 'You still have a legal attack -- there is no passing.' };
-  const end = checkRoundEnd(state);
-  return { ok: true, msg: end || 'You yield the round.' };
 }
 
 function removeCard(state, card, player) {
@@ -596,54 +579,40 @@ export function usePower(state, islandId, args = {}, player = 1) {
   state.combatLog.push(msg);
   state.lastAction = msg;
   nextTurn(state);
-  return { ok: true, msg };
+  // Same as every other action: a power can end the round too -- Teleportation
+  // can pull the last frontline card back, and the opponent may be left with
+  // no legal move once the turn passes.
+  const end = checkRoundEnd(state);
+  return { ok: true, msg: end ? `${msg}\n${end}` : msg };
 }
 
-// True if `player` has any move left this combat phase: a non-Mine Front
-// card with a legal target (no once-per-round limit, owner ruling
-// 2026-09-14), or any Reserve card to promote to Front. Used
-// to detect a mines-only / empty-reserve mutual deadlock (see checkRoundEnd).
+// True if `player` has any move left this combat phase: an attack or a
+// promotion the engine would accept right now. Mirrors playerAttack() and
+// moveReserveToFront() guard for guard, so checkRoundEnd() never declares a
+// player stuck who could still act, nor lets a player sit on a turn with no
+// move the engine would take.
+//   * attack: a non-Mine, unsabotaged FRONT card against a non-camouflaged
+//     card on the opponent's FRONT (never the reserve) that is face-down
+//     (blind attacks are always allowed) or face-up and a WIN or DRAW for it.
+//   * promotion: an unsabotaged reserve card whose own front slot is free
+//     (promotion is straight ahead only).
 function canAct(state, player) {
   const front = player === 1 ? state.p1Front : state.p2Front;
   const reserve = player === 1 ? state.p1Reserve : state.p2Reserve;
   const oppFront = player === 1 ? state.p2Front : state.p1Front;
-  const oppReserve = player === 1 ? state.p2Reserve : state.p1Reserve;
 
-  // BUGFIX (the actual deadlock, found via a 300-game direct-engine stress
-  // simulation -- ~39% never reached GAME_OVER before this fix): having an
-  // non-Mine Front card is NOT sufficient for "can act" -- that
-  // card might have zero LEGAL targets. playerAttack() itself rejects any
-  // attack on a face-up target unless the result is WIN or DRAW (see its
-  // `dfn.faceUp` guard); once enough cards get revealed over a round (every
-  // attacked card -- win, loss, or draw -- ends up faceUp=true), a player
-  // can easily be left with cards that are technically "actionable" by the
-  // old check yet have no attack playerAttack() will actually allow. That
-  // mismatch meant checkRoundEnd()'s deadlock detector never fired (canAct
-  // said "yes" on both sides) while every real attack attempt kept getting
-  // rejected -- an invisible infinite skipTurn() loop. Mirror
-  // playerAttack()'s real legality rule here instead of a rough proxy for
-  // it: a card can act only if some target in the currently-valid attack
-  // row is either face-down (blind attacks are always allowed) or a
-  // face-up target this card would WIN or DRAW against.
-  const oppFrontAlive = oppFront.some(Boolean);
-  const targets = oppFrontAlive ? oppFront : oppReserve;
   const hasLegalAttack = front.some((c) => {
-    if (!c || c.def.id === 'mine') return false;
-    return targets.some((t) => {
-      if (!t) return false;
+    if (!c || c.def.id === 'mine' || c.sabotaged) return false;
+    return oppFront.some((t) => {
+      if (!t || t.camouflaged) return false;
       if (!t.faceUp) return true;
       const res = getResult(c.def.id, t.def.id);
       return res === 'WIN' || res === 'DRAW';
     });
   });
 
-  // A non-empty Reserve only counts as a legal move if there's actually a
-  // free Front slot to promote into -- moveReserveToFront() itself rejects
-  // the move otherwise ("Front is full!").
-  // A reserve card only counts if the front slot straight ahead of it is
-  // free (promotion is vertical only).
-  const hasReserve = reserve.some((c, i) => c && front[i] === null);
-  return hasLegalAttack || hasReserve;
+  const hasPromotion = reserve.some((c, i) => c && !c.sabotaged && front[i] === null);
+  return hasLegalAttack || hasPromotion;
 }
 
 // ---- AI capture chooser hook ----
@@ -683,12 +652,15 @@ function pickCaptureSlot(state, player) {
 
 // ---- Round / island-capture ----
 export function checkRoundEnd(state) {
-  const p1Alive = state.p1Front.some(Boolean) || state.p1Reserve.some(Boolean);
-  const p2Alive = state.p2Front.some(Boolean) || state.p2Reserve.some(Boolean);
-  // BUGFIX: both sides can still have cards (e.g. unattackable Mines) yet
-  // have no legal move left for either player -- previously that round could
-  // never end (only an actual kill ever called into this branch). Treat a
-  // mutual deadlock the same as a mutual wipe: a draw round, no capture.
+  // Only a live combat round can end; a second call after the round already
+  // resolved must not score the empty board of the next PREP as a draw.
+  if (state.phase !== PHASE.COMBAT) return null;
+  // Owner ruling 2026-09-16: the round ends the moment a seat's FRONTLINE is
+  // empty, and that seat loses it. The reserve does not keep a seat alive --
+  // it never fights. A draw that empties both frontlines at once is a drawn
+  // round.
+  const p1Alive = state.p1Front.some(Boolean);
+  const p2Alive = state.p2Front.some(Boolean);
   // Owner ruling 2026-09-16: there is no passing. The player to move who
   // has no legal attack (only mines, or every target would sink them)
   // yields the round to the opponent. Checked for the player whose turn

@@ -1,10 +1,10 @@
 import { store } from './store.js';
 import { ISLANDS, getIslandDef } from './islands.js';
-import { PHASE, createGameState, usePower, placeCard, lockIn, autoPlace, moveReserveToFront, checkRoundEnd, playerCaptureIsland, returnCard, moveCard, playerAttack, skipTurn } from './game.js';
+import { PHASE, createGameState, usePower, placeCard, lockIn, autoPlace, moveReserveToFront, checkRoundEnd, playerCaptureIsland, returnCard, moveCard, playerAttack } from './game.js';
 import * as UI from './ui.js';
 import { aiTurn, aiDeploy } from './ai.js';
 import { mpActive, mpUsePower, mpConnect, mpDisconnect, mpSetHandlers,
-         mpAttack, mpMove, mpPlace, mpReady, mpAutoPlace, mpCaptureIsland, mpSkip, mpAddBot,
+         mpAttack, mpMove, mpPlace, mpReady, mpAutoPlace, mpCaptureIsland, mpAddBot,
          mpRematch } from './multiplayer.js';
 import { ARTIFACTS, useArtifact } from './artifacts.js';
 import { ARTIFACT_IDS } from './artifacts.js';
@@ -70,6 +70,7 @@ function executeIslandPower(islandId, args) {
     const res = usePower(store.state, islandId, args);
     if (res.ok) {
       UI.setStatus(res.msg);
+      UI.addLogEntry(res.msg.split('\n')[0]);
       renderAll();
       if (islandId === 'camouflage') {
         // Camouflage just hid one of the player's own cards from the
@@ -84,7 +85,10 @@ function executeIslandPower(islandId, args) {
         const card = zoneArr[args.slot ?? 0];
         if (card) UI.showShieldEffect(card.uid);
       }
-      if (store.state.turnOwner === 2) setTimeout(() => doAiTurn(), 1000);
+      // usePower() runs checkRoundEnd() like every other action, so the
+      // power may have ended the round or the match: afterAction() handles
+      // GAME_OVER and only hands the turn to the AI while combat goes on.
+      afterAction();
     } else {
       UI.setStatus(res.msg);
     }
@@ -262,8 +266,8 @@ function onPlayerCardClick(slot, card) {
   }
   selectedAttackerSlot = slot;
   UI.clearAllHighlights();
-  const oppFrontAlive = store.state.p2Front.some(Boolean);
-  UI.highlightSlots(oppFrontAlive ? 'opp-front' : 'opp-reserve', true, 'target-highlight');
+  // Only the enemy frontline is ever a target; the reserve never fights.
+  UI.highlightSlots('opp-front', true, 'target-highlight');
   UI.setStatus(`${card.def.name} selected -- pick a target.`);
 }
 
@@ -278,21 +282,16 @@ function cancelAttack() {
   UI.setStatus('Attack cancelled.');
 }
 
-// zone: 'front' | 'reserve' -- BUGFIX: the opponent's Reserve zone previously
-// had no click handler wired at all (renderAll() always passed null for it),
-// so radar/attacks could never actually target a card sitting in Reserve.
-// See renderAll() below, which now wires this handler for both zones.
+// zone: 'front' | 'reserve'. The opponent's Reserve is wired too (see
+// renderAll() below) because Scouting, Sabotage and the Spyglass artifact
+// can target it -- an attack never can.
 function onOppCardClick(zone, slot, card) {
   if (!store.state || store.combatLocked) return;
   if (store.activeArtifact) { handleArtifactTargetClick(zone, slot, card); return; }
   if (store.activeIslandPower) { handleTargetClick('opp', zone, slot, card); return; }
   if (selectedAttackerSlot === null) return;
-  // Basic attacks still only target the currently-legal row: Front while it
-  // has any card, Reserve once Front is fully cleared -- unchanged from
-  // before this fix, just now actually reachable (see comment above).
-  const oppFrontAlive = store.state.p2Front.some(Boolean);
-  const validZone = oppFrontAlive ? 'front' : 'reserve';
-  if (zone !== validZone) return;
+  // Attacks target the enemy frontline only (owner ruling 2026-09-16).
+  if (zone !== 'front') return;
   doAttack(selectedAttackerSlot, slot);
 }
 
@@ -1195,28 +1194,6 @@ function initEvents() {
   });
   if (UI.DOM.btnReady) UI.DOM.btnReady.addEventListener('click', onReady);
   if (UI.DOM.btnAuto) UI.DOM.btnAuto.addEventListener('click', onAutoPlace);
-  const btnSkip = document.getElementById('btn-skip');
-  if (btnSkip) btnSkip.addEventListener('click', () => {
-    // BUGFIX: Skip Turn is the one action that bypasses the island-power
-    // targeting modal entirely (every other click path checks
-    // store.activeIslandPower first and routes into handleTargetClick --
-    // see onPlayerCardClick/onOppCardClick/onPlayerReserveClick -- so it's
-    // structurally impossible to reach them mid-targeting). Skipping turn
-    // mid-targeting used to leave store.activeIslandPower stuck (e.g.
-    // 'maneuver'), so the player's NEXT, unrelated island click on some
-    // later turn would get silently reinterpreted as a target pick for the
-    // stale power instead of activating the one actually clicked -- most
-    // consequential for Maneuver, which would fire against the wrong
-    // island. Clear it here so skipping always fully cancels any
-    // in-progress targeting, same as resolving or rejecting one normally
-    // does (see executeIslandPower).
-    store.activeIslandPower = null;
-    UI.clearAllHighlights();
-    if (mpActive) { mpSkip(); UI.setStatus('Turn passed.'); return; }
-    const res = skipTurn(store.state);
-    UI.setStatus(res.msg);
-    if (res.ok) { renderAll(); afterAction(); }
-  });
   if (UI.DOM.btnRules) UI.DOM.btnRules.addEventListener('click', () => {
     UI.renderRulesMatrix();
     if (UI.DOM.rulesModal) UI.DOM.rulesModal.classList.remove('hidden');
@@ -1301,7 +1278,7 @@ function initEvents() {
   if (UI.DOM.lbTabRemote) UI.DOM.lbTabRemote.addEventListener('click', showRemoteLeaderboard);
 
   // Combat log -- collapsible badge/drawer (fix for the mobile bug where
-  // a permanently-open 300px panel covered #btn-skip). Tap the badge to
+  // a permanently-open 300px panel covered the board controls). Tap the badge to
   // expand the bottom-sheet drawer; tap anywhere outside #combat-log
   // while expanded collapses it back down, so it's never left sitting
   // over tappable board cells.
@@ -1607,8 +1584,8 @@ export function renderAll() {
 
   // BUGFIX: oppReserve previously always rendered with no click handler
   // (`null`), so a card sitting in Reserve could never be targeted at all
-  // (attacks, radar, Spyglass...). Both zones now share onOppCardClick,
-  // which itself enforces which zone is a legal *attack* target.
+  // (Scouting, Sabotage, Spyglass...). Both zones share onOppCardClick,
+  // which only ever lets an attack land on the Front.
   const oppClick = store.state.phase === PHASE.COMBAT
     ? (slot, card) => onOppCardClick('front', slot, card) : null;
   const oppReserveClick = store.state.phase === PHASE.COMBAT

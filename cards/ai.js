@@ -152,14 +152,14 @@ export function scoreAttack(state, player, atk, target, pool, eligibleNow) {
 }
 
 // Every attack the engine would accept, as [atkSlot, targetSlot, zone, atk, target].
+// Targets are the opponent's FRONTLINE only (owner ruling 2026-09-16: the
+// reserve never fights; an empty frontline has already ended the round), so
+// `zone` is always 'front' -- kept in the tuple for the ai.py tie-break shape.
 export function legalAttacks(state, player, sabotaged, camouflaged) {
   const opp = player === 1 ? 2 : 1;
   const ownFront = player === 1 ? state.p1Front : state.p2Front;
-  const oppFront = opp === 1 ? state.p1Front : state.p2Front;
-  const oppReserve = opp === 1 ? state.p1Reserve : state.p2Reserve;
-  const frontAlive = oppFront.some(Boolean);
-  const row = frontAlive ? oppFront : oppReserve;
-  const zone = frontAlive ? 'front' : 'reserve';
+  const row = opp === 1 ? state.p1Front : state.p2Front;
+  const zone = 'front';
 
   const out = [];
   for (let ai = 0; ai < ownFront.length; ai++) {
@@ -250,7 +250,9 @@ export function choosePower(state, player) {
   }
 
   // Scouting: reveal two enemy Reserve cards -- only when Reserve is what we
-  // are about to have to attack into.
+  // are about to have to attack into. NOTE: since the owner ruling of
+  // 2026-09-16 an empty frontline ends the round before this can be asked,
+  // so the web AI no longer fires Scouting; kept verbatim for ai.py parity.
   if (avail.includes('scouting') && !oppFront.some(Boolean)) {
     const hidden = [];
     for (let i = 0; i < oppReserve.length; i++) {
@@ -469,12 +471,13 @@ export async function aiTurn(state) {
   // handed back to P1.
   const power = choosePower(state, 2);
   if (power !== null) {
+    // usePower() runs checkRoundEnd() itself, and its msg already carries
+    // the round-end text when the power ended the round.
     const res = usePower(state, power[0], power[1], 2);
     if (res && res.ok) {
       const powerMsg = `AI: ${res.msg}`;
-      state.lastAction = powerMsg;
-      const powerEnd = checkRoundEnd(state);
-      return { msg: powerEnd ? `${powerMsg}\n${powerEnd}` : powerMsg };
+      state.lastAction = powerMsg.split('\n')[0];
+      return { msg: powerMsg };
     }
     // A refused power (bad args, already used) must not cost the AI its
     // turn -- fall through to the normal attack/promote/skip decision.
@@ -509,16 +512,19 @@ export async function aiTurn(state) {
 
   const [, aiSlot, targetSlot] = decision;
   const atk = state.p2Front[aiSlot];
-  const dfn = state.p1Front.some(Boolean) ? state.p1Front[targetSlot] : state.p1Reserve[targetSlot];
+  const dfn = state.p1Front[targetSlot];
 
   const { msg } = resolveAttack(state, atk, dfn, 2, 1);
   const fullMsg = `AI: ${msg}`;
+  // Read who survived BEFORE checkRoundEnd(): a round-ending attack sends
+  // every field card back to hand, which would read as both sunk and make
+  // app.js animate a false DRAW.
+  const atkSurvived = state.p2Front.includes(atk);
+  const defSurvived = state.p1Front.includes(dfn);
   state.turnOwner = 1;
   state.lastAction = fullMsg;
 
   const end = checkRoundEnd(state);
-  const atkSurvived = state.p2Front.includes(atk) || state.p2Reserve.includes(atk);
-  const defSurvived = state.p1Front.includes(dfn) || state.p1Reserve.includes(dfn);
   return { msg: end ? `${fullMsg}\n${end}` : fullMsg, atkCard: atk, defCard: dfn, atkSurvived, defSurvived };
 }
 
