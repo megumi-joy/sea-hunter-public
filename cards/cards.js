@@ -62,10 +62,12 @@ export const IMPACT = {
 // hand-replenish logic). This is a minimal additive fix, not a rebalance of
 // existing duplicate counts -- flagging for owner/lead to tune duplicate
 // weights later if 14 feels off.
+// 13 cards, exactly the HUMANS list printed on the cardboard contents card
+// (Sea_Hunter_cards_tableofcontent_and_islas.png): one Naval Mine, not two.
 export const DECK_IDS = [
   'sea_hunter', 'sea_hunter', 'patrol_ship', 'destroyer', 'cruiser',
   'coastal_artillery', 'submarine', 'submarine', 'landing_craft', 'landing_craft',
-  'mine', 'mine', 'battleship', 'plane',
+  'mine', 'battleship', 'plane',
 ];
 
 export const CARD_ORDER = Object.keys(CARDS);
