@@ -247,6 +247,7 @@ export function handleIslandClick(islandId) {
 
 // ── Combat: attacker/defender selection ───────────────────────────
 function onPlayerCardClick(slot, card) {
+  disarmPromotion();
   if (!store.state || store.combatLocked) return;
   if (store.activeIslandPower) { handleTargetClick('player', 'front', slot, card); return; }
   if (store.state.phase === 'ISLAND_CAPTURE') {
@@ -276,6 +277,7 @@ function onPlayerCardClick(slot, card) {
 // release the arc on nothing to cancel" gesture needs it as its own entry
 // point. Same three lines that branch does, nothing more.
 function cancelAttack() {
+  disarmPromotion();
   if (selectedAttackerSlot === null) return;
   selectedAttackerSlot = null;
   UI.clearAllHighlights();
@@ -306,30 +308,57 @@ function onPlayerReserveClick(slot, card) {
   // An armed attacker: render/input.js does not light the reserve as a
   // promotion then, so the tap only drops the attacker.
   if (selectedAttackerSlot !== null) { cancelAttack(); return; }
-  // Owner 2026-09-16: the first tap of a double tap (which opens the hero)
-  // used to promote the card. The promotion waits PROMOTE_DELAY_MS; a second
-  // tap in that window cancels it (render/hero.js's onSecondTap, or this
-  // handler again on the same slot).
-  if (pendingPromotion) {
-    const same = pendingPromotion.slot === slot;
-    cancelPendingPromotion();
-    if (same) return;
+  // QA 2026-09-17 (Motorola g84): "the opponent makes four moves in a row".
+  // It did not -- a single tap on a reserve card moved it up and SPENT THE
+  // TURN, so a player tapping their reserve to look at it lost turn after
+  // turn. Moving up is now two explicit steps: the first tap only picks the
+  // card and lights the slot ahead; a tap on that slot moves it. Nothing is
+  // spent until then, so a double tap (hero view) is harmless too.
+  if (armedPromotion === slot) { disarmPromotion(); UI.setStatus(''); return; }
+  if (store.state.p1Front[slot] !== null) {
+    disarmPromotion();
+    UI.setStatus('The front slot ahead of it is occupied.');
+    return;
   }
-  const timer = setTimeout(() => {
-    pendingPromotion = null;
-    promoteReserve(slot);
-  }, PROMOTE_DELAY_MS);
-  pendingPromotion = { slot, timer };
+  armedPromotion = slot;
+  applyPromotionArm();
+  UI.setStatus(`Tap the lit slot ahead to move ${card.def.name} up -- this uses your turn.`);
 }
 
-const PROMOTE_DELAY_MS = 280;
-let pendingPromotion = null;   // { slot, timer }
+let armedPromotion = null;   // reserve slot picked for a move up, or null
 
-function cancelPendingPromotion() {
-  if (!pendingPromotion) return;
-  clearTimeout(pendingPromotion.timer);
-  pendingPromotion = null;
+function disarmPromotion() {
+  armedPromotion = null;
+  applyPromotionArm();
 }
+// Kept under its old name for render/hero.js and clearSelection.
+function cancelPendingPromotion() { disarmPromotion(); }
+
+// Re-applied after every render: the zone DOM is rebuilt wholesale.
+function applyPromotionArm() {
+  document.querySelectorAll('.promote-armed, .promote-target').forEach((el) => {
+    el.classList.remove('promote-armed', 'promote-target');
+  });
+  const st = store.state;
+  if (armedPromotion === null) return;
+  const legal = st && st.phase === PHASE.COMBAT && st.turnOwner === 1 && !store.combatLocked
+    && st.p1Reserve[armedPromotion] && st.p1Front[armedPromotion] === null;
+  if (!legal) { armedPromotion = null; return; }
+  const from = document.querySelector(`#player-reserve .slot[data-slot="${armedPromotion}"]`);
+  const to = document.querySelector(`#player-front .slot[data-slot="${armedPromotion}"]`);
+  if (from) from.classList.add('promote-armed');
+  if (to) to.classList.add('promote-target');
+}
+
+// The lit slot is empty, and renderZone puts no click handler on empty slots.
+document.addEventListener('click', (e) => {
+  if (armedPromotion === null) return;
+  const slotEl = e.target.closest && e.target.closest('#player-front .slot.promote-target');
+  if (!slotEl) return;
+  const slot = armedPromotion;
+  armedPromotion = null;
+  promoteReserve(slot);
+});
 
 function promoteReserve(slot) {
   // Re-checked: the board may have moved on in the 280 ms.
@@ -1763,5 +1792,6 @@ export function renderAll() {
   // P2: re-derive the interaction layer's own classes (legal targets,
   // selection, turn dim, hand fan) from the board that was just rebuilt.
   Input.refresh();
+  applyPromotionArm();
   Tutorial.observe(store.state);
 }

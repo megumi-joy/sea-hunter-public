@@ -340,3 +340,36 @@
     transition: none;
   }
 }
+
+/* ---- moving a reserve card up is two explicit steps ---------------------
+   QA 2026-09-17: a single tap used to move the card and spend the turn. The
+   first tap picks the card (ring), the slot straight ahead lights up with an
+   arrow, and only a tap on that slot moves it. */
+#game-screen #player-reserve .slot.promote-armed .card {
+  outline: 2px solid var(--gold, #f4c24f);
+  outline-offset: 2px;
+  transform: translateY(-4px);
+}
+#game-screen #player-front .slot.promote-target {
+  position: relative;
+  outline: 2px dashed var(--gold, #f4c24f);
+  outline-offset: -3px;
+  border-radius: 10px;
+  background: rgba(244, 194, 79, 0.14);
+  cursor: pointer;
+}
+#game-screen #player-front .slot.promote-target::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 22px; height: 22px;
+  margin: -6px 0 0 -11px;
+  border-left: 4px solid var(--gold, #f4c24f);
+  border-top: 4px solid var(--gold, #f4c24f);
+  transform: rotate(45deg);
+  animation: sh-promote-nudge 0.9s ease-in-out infinite alternate;
+}
+@keyframes sh-promote-nudge { from { opacity: 0.55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  #game-screen #player-front .slot.promote-target::after { animation: none; }
+}
