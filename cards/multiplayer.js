@@ -205,6 +205,11 @@ export function adaptState(view) {
     p2IslandGarrison: view.op_island_garrison || {},
     p1Artifacts: (store.state && store.state.p1Artifacts) || [],
     pointsToWin: view.points_to_win || DEFAULT_POINTS_TO_WIN,
+    // Who took the round that just ended (seat-relative: 1 = me, 2 = the
+    // opponent, 0 = drawn or none yet) and why the match ended -- the
+    // server's word, so render/screens.js need not guess from the board.
+    roundWinner: rel(view.round_winner == null ? 0 : view.round_winner),
+    winReason: view.win_reason || '',
     multiplayer: true,
   };
 }

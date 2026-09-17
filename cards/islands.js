@@ -68,7 +68,8 @@
 //    usePower() camouflage branch and ai.js's target filtering.
 export const ISLANDS = {
   radar:         { id: 'radar',         name: 'Radar Station', abbr: 'RD', emoji: '🔎',
-    desc: 'One-time: reveal one face-down enemy card before you attack.' },
+    // A power is your turn: there is no attack after it.
+    desc: "One-time, uses your turn: reveal one of the opponent's face-down Front cards." },
   camouflage:    { id: 'camouflage',    name: 'Camouflage',    abbr: 'CM', emoji: '🎭',
     desc: "One-time: hide one of your own cards -- the opponent cannot attack it on their next turn." },
   teleportation: { id: 'teleportation', name: 'Teleportation', abbr: 'TP', emoji: '🌀',
@@ -76,7 +77,7 @@ export const ISLANDS = {
   maneuver:      { id: 'maneuver',      name: 'Maneuver',      abbr: 'MN', emoji: '🚢',
     // F5 RULING (owner, 2026-08-14): retrieves a unit from one of YOUR held
     // islands' garrison, not a field withdrawal -- see game.js's usePower().
-    desc: "One-time: pull one of your own units off an island you hold, back to hand -- return it to the field before round-end or the island may drain." },
+    desc: "One-time: take the unit garrisoning one of your islands back to your hand. At round end that island is re-garrisoned from another qualifying unit on your field, or it drains and its point is lost." },
   scouting:      { id: 'scouting',      name: 'Scouting',      abbr: 'SC', emoji: '👁️',
     desc: "One-time: reveal two of the opponent's Reserve cards." },
   rapid_support: { id: 'rapid_support', name: 'Rapid Support', abbr: 'RS', emoji: '⚡',

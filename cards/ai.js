@@ -249,11 +249,11 @@ export function choosePower(state, player) {
     }
   }
 
-  // Scouting: reveal two enemy Reserve cards -- only when Reserve is what we
-  // are about to have to attack into. NOTE: since the owner ruling of
-  // 2026-09-16 an empty frontline ends the round before this can be asked,
-  // so the web AI no longer fires Scouting; kept verbatim for ai.py parity.
-  if (avail.includes('scouting') && !oppFront.some(Boolean)) {
+  // Scouting: reveal two enemy Reserve cards when the opponent's frontline is
+  // down to its last card -- their reserve is what steps up next. (It used to
+  // wait for an empty frontline, which since the owner ruling of 2026-09-16
+  // has already ended the round, so it never fired. ai.py needs the same.)
+  if (avail.includes('scouting') && oppFront.filter(Boolean).length === 1) {
     const hidden = [];
     for (let i = 0; i < oppReserve.length; i++) {
       if (oppReserve[i] && !oppReserve[i].faceUp) hidden.push(i);

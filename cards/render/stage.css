@@ -1331,7 +1331,6 @@
 #game-screen .opp-section {
   transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 0.25s ease;
 }
-#game-screen .centre-band { z-index: 4; }
 #game-screen .stage.band-top .centre-band {
   transform: translateY(calc(-1 * (var(--opp-strip-h) + var(--board-h) + 2 * var(--gap))));
 }
@@ -1355,6 +1354,11 @@
    (render/input.css `.hand-collapsed`, a translateY) never actually moved
    the row. Stop breathing while collapsed. */
 #game-screen .hand-row.hand-collapsed { animation: none; }
+
+/* The island band sits above the time-of-day wash (z-index 20, P13 fix 2
+   above) in every orientation: at night the islands at the top were dimmed
+   with the board. Still under the hand (55+) and every overlay. */
+#game-screen .centre-band { z-index: 21; }
 
 @media (prefers-reduced-motion: reduce) {
   #game-screen .centre-band,

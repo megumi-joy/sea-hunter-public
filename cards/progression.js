@@ -95,7 +95,8 @@ export function rankOf(points) {
 export const GOALS = {
   win:        { text: 'Win a match',                         need: 1, stat: 'wins',       gold: 40 },
   capture2:   { text: 'Capture two islands',                 need: 2, stat: 'captures',   gold: 40 },
-  drawWin:    { text: 'Win a match with a drawn round in it', need: 1, stat: 'drawWins',   gold: 60 },
+  // Id and stat keep their old names: saved goal progress is keyed by them.
+  drawWin:    { text: 'Win a match with a mutual sinking in it', need: 1, stat: 'drawWins', gold: 60 },
   reveal5:    { text: 'Reveal five hidden enemy cards',      need: 5, stat: 'reveals',    gold: 40 },
   play3:      { text: 'Finish three matches',                need: 3, stat: 'matches',    gold: 40 },
   voyageNode: { text: 'Clear an enemy fleet on a voyage',    need: 1, stat: 'voyageWins', gold: 50 },
@@ -184,7 +185,7 @@ export function streakView(p = loadProgress()) {
 
 // ---- the match result -----------------------------------------------------
 
-// `stats` = { won, score: [mine, theirs], captures, reveals, drawRounds,
+// `stats` = { won, score: [mine, theirs], captures, reveals, mutualSinks,
 // voyage, seenCards, seenIslands, capturedIslands }. The three lists feed the
 // Fleet collection: seen = appeared face-up on the board or as the contested
 // island, owned island = captured at least once. Applies XP, rank, goals and
@@ -202,7 +203,8 @@ export function recordMatch(stats) {
     matches: 1,
     captures: stats.captures || 0,
     reveals: stats.reveals || 0,
-    drawWins: won && stats.drawRounds > 0 ? 1 : 0,
+    // A DRAW attack result (both ships sink), not a drawn round.
+    drawWins: won && stats.mutualSinks > 0 ? 1 : 0,
     voyageWins: won && stats.voyage ? 1 : 0,
     closeWins: won && mine - theirs === 1 ? 1 : 0,
   };

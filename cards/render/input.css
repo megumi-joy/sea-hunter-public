@@ -328,3 +328,15 @@
   background: rgba(56, 189, 248, 0.14);
   box-shadow: inset 0 0 0 2px rgba(56, 189, 248, 0.75);
 }
+
+/* ---- Reduced motion --------------------------------------------------
+   The fan re-flow, the COMBAT collapse slide and the drag-return spring are
+   all decoration: the positions still change, instantly. */
+@media (prefers-reduced-motion: reduce) {
+  #game-screen .hand-row,
+  #game-screen #player-hand.input-fan .card,
+  #game-screen #player-hand.input-fan .card.drag-return,
+  #game-screen .card.drag-return {
+    transition: none;
+  }
+}

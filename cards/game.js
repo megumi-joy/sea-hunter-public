@@ -205,6 +205,9 @@ export function lockIn(state) {
   if (state.phase !== PHASE.PREP) return { ok: false, msg: 'Not in the PREP phase' };
   const placed = state.p1Front.filter(Boolean).length + state.p1Reserve.filter(Boolean).length;
   if (placed < 4) return { ok: false, msg: 'Place at least 4 cards!' };
+  // The frontline decides the round (owner ruling 2026-09-16): a fleet with
+  // nothing on it would lock in a round that is already lost.
+  if (!state.p1Front.some(Boolean)) return { ok: false, msg: 'Place at least one card on the frontline' };
 
   for (let i = 0; i < FRONT_SIZE; i++) {
     if (state.p1Front[i] === null && state.p1Hand.length) {
@@ -226,7 +229,10 @@ export function lockIn(state) {
   state.phase = PHASE.COMBAT;
   state.combatLog = [];
   checkSkips(state);
-  return { ok: true, msg: 'Combat begins!' };
+  // The round can end before the first attack: the side to move may have no
+  // legal attack at all (checkRoundEnd's yield). Same check every action runs.
+  const end = checkRoundEnd(state);
+  return { ok: true, msg: end ? `Combat begins!\n${end}` : 'Combat begins!' };
 }
 
 function checkSkips(state) {
@@ -308,6 +314,8 @@ export function resolveAttack(state, atkCard, defCard, atkPlayer, defPlayer, for
     removeCard(state, atkCard, atkPlayer);
   } else if (result === 'DRAW') {
     msg = `${aName} and ${dName} destroy each other!`;
+    // Read by render/progress.js (the "mutual sinking" daily goal).
+    state.mutualSinks = (state.mutualSinks || 0) + 1;
     removeCard(state, atkCard, atkPlayer);
     removeCard(state, defCard, defPlayer);
   } else {
@@ -519,16 +527,18 @@ export function usePower(state, islandId, args = {}, player = 1) {
     // Swap a Front card with the Reserve card directly behind it (same
     // slot index -- "directly behind" per the owner's card-image rules).
     const slot = args.slot ?? 0;
+    // The card says swap: with nothing behind, the power is refused rather
+    // than pulling the card back -- your own power must never empty (or
+    // thin) your frontline, which decides the round.
     const front = ownFront[slot];
     const reserve = ownReserve[slot];
     if (!front) return { ok: false, msg: 'No Front card in that slot' };
+    if (!reserve) return { ok: false, msg: 'Teleportation needs a Reserve card directly behind to swap with' };
     ownFront[slot] = reserve;
     ownReserve[slot] = front;
     front.slot = slot;
-    if (reserve) reserve.slot = slot;
-    msg = reserve
-      ? `Teleportation: ${front.def.emoji} ${front.def.name} swaps with ${reserve.def.emoji} ${reserve.def.name}!`
-      : `Teleportation: ${front.def.emoji} ${front.def.name} falls back to Reserve!`;
+    reserve.slot = slot;
+    msg = `Teleportation: ${front.def.emoji} ${front.def.name} swaps with ${reserve.def.emoji} ${reserve.def.name}!`;
   } else if (power === 'scouting') {
     // Reveal two of the opponent's Reserve cards.
     const s1 = args.slot1, s2 = args.slot2;
@@ -579,9 +589,8 @@ export function usePower(state, islandId, args = {}, player = 1) {
   state.combatLog.push(msg);
   state.lastAction = msg;
   nextTurn(state);
-  // Same as every other action: a power can end the round too -- Teleportation
-  // can pull the last frontline card back, and the opponent may be left with
-  // no legal move once the turn passes.
+  // Same as every other action: a power can end the round too -- the
+  // opponent may be left with no legal move once the turn passes.
   const end = checkRoundEnd(state);
   return { ok: true, msg: end ? `${msg}\n${end}` : msg };
 }
@@ -846,10 +855,16 @@ function executeIslandCapture(state, winner, slot, zone = 'front') {
   for (const c of [...state.p1Front, ...state.p1Reserve]) if (c) state.p1Hand.push(c);
   for (const c of [...state.p2Front, ...state.p2Reserve]) if (c) state.p2Hand.push(c);
   // One-turn island flags never survive into the next round (game.py does the
-  // same clear when it recycles the field and discard back into hand).
+  // same clear when it recycles the field and discard back into hand), and
+  // neither does a reveal: a card is face-up for the round only.
   for (const c of [...state.p1Hand, ...state.p2Hand, ...state.p1Discard, ...state.p2Discard]) {
-    if (c) { c.sabotaged = false; c.camouflaged = false; }
+    if (c) { c.sabotaged = false; c.camouflaged = false; c.faceUp = false; }
   }
+  // Artifact effects armed this round (Smoke Bomb, Lucky Compass, Kraken
+  // Bait) end with it.
+  state.p1Shielded = false;
+  state.p1LuckyAttack = false;
+  state.skipTurnP2 = false;
 
   // BUGFIX: this used to only recycle the discard pile back into hand when
   // hand was FULLY empty. Since a captured card is the only unit meant to

@@ -375,7 +375,11 @@ function applyHandCollapse(phase) {
     }
   }
   const combat = phase === 'COMBAT';
-  const want = combat && !handExpanded && handCards().length > 0;
+  // Rapid Support asks for a hand card (ui.js's highlightHand puts
+  // .target-highlight on the row): the hand must be up and its first tap
+  // must be the pick, not an expand.
+  const targeted = row.classList.contains('target-highlight');
+  const want = combat && !handExpanded && !targeted && handCards().length > 0;
   if (row.classList.contains('hand-collapsed') !== want) {
     row.classList.toggle('hand-collapsed', want);
   }
@@ -407,6 +411,10 @@ function bindHandExpand() {
   if (!row || row.dataset.p9Expand === '1') return;
   row.dataset.p9Expand = '1';
   row.addEventListener('pointerdown', (ev) => {
+    if (row.classList.contains('target-highlight')) {
+      if (row.classList.contains('hand-collapsed')) row.classList.remove('hand-collapsed');
+      return;
+    }
     if (row.classList.contains('hand-collapsed')) {
       ev.stopPropagation();
       ev.preventDefault();

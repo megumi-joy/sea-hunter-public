@@ -12,6 +12,9 @@
 //      (owner 2026-09-16: a long press there sent a placed card back to
 //      hand by accident). The hero stays up until tapped. A face-down card
 //      is never shown: pressing it must not reveal it.
+//      No double tap in ISLAND_CAPTURE (the garrison pick is a tap), and
+//      nothing at all while an attack animation runs (store.combatLocked)
+//      or on an island chip that is a live power target.
 //   2. Capture. render/screens.js shows the captured island here for a
 //      beat before the P4 ceremony flies it to its row -- from the hero
 //      card's rect, so the flight starts where the eye already is.
@@ -247,7 +250,27 @@ function inPrep() {
   return !!(deps && deps.getPhase && deps.getPhase() === 'PREP');
 }
 
-function inspect(found) {
+// ISLAND_CAPTURE: the garrison pick is a single tap on your own card, and a
+// player who taps twice (or taps a second card quickly) must not have the
+// hero open over the pick and drop it. No double tap there; hold still works.
+function inCapture() {
+  return !!(deps && deps.getPhase && deps.getPhase() === 'ISLAND_CAPTURE');
+}
+
+// The board is not the player's to touch: an attack animation (theirs or
+// the AI's) is running. Every other input path checks the same flag.
+function locked() {
+  return !!(deps && deps.store && deps.store.combatLocked);
+}
+
+// An island chip that is a live power target (Maneuver lights the held
+// islands) is a button for that pick, not something to read.
+function islandTargeting(target) {
+  return !!(deps && deps.store && deps.store.activeIslandPower
+    && target && target.closest && target.closest('.island-card[data-island-id]'));
+}
+
+function inspect(found, opts = {}) {
   // Whatever gesture render/input.js had started on this press (a hand card
   // picked up, an attacker armed) is abandoned: the player was reading, not
   // playing. A double tap's FIRST tap has already run as a normal tap, so
@@ -257,7 +280,9 @@ function inspect(found) {
   // And the click the browser synthesizes when the finger lifts must neither
   // reach ui.js's tap handler as a placement or an attack nor land on the
   // hero it just opened and close it again.
-  swallowClick = true;
+  // A right click has no pointerup of its own to clear the flag (see
+  // init's release()), so it would eat the next left click instead.
+  if (!opts.fromContextMenu) swallowClick = true;
   if (found.kind === 'unit') {
     showCard(found.def, { interactive: true, cls: 'hero-moment-inspect' });
   } else if (deps && deps.buildIsland) {
@@ -275,14 +300,24 @@ function onDown(e) {
   lastPointerType = e.pointerType || '';
   if (e.button !== undefined && e.button > 0) return;
   if (current) return;
+  if (locked() || islandTargeting(e.target)) { cancelPress(); lastTap = null; return; }
   const found = inspectableDef(e.target);
   if (!found) { lastTap = null; return; }
   cancelPress();
+  // The second press of what may become a double tap: tell app.js before
+  // the finger lifts, so a delayed single-tap action (a reserve promotion)
+  // does not fire underneath it.
+  const key = tapKey(e.target);
+  if (key && lastTap && lastTap.key === key && Date.now() - lastTap.t <= DOUBLE_TAP_MS
+      && deps.onSecondTap) deps.onSecondTap();
   press = {
-    x: e.clientX, y: e.clientY, pid: e.pointerId, found, key: tapKey(e.target), moved: false,
+    x: e.clientX, y: e.clientY, pid: e.pointerId, found, key, moved: false,
     // No hold in PREP: there a press is placement, and a long one did
     // things the player never asked for.
-    timer: inPrep() ? 0 : setTimeout(() => { press = null; lastTap = null; inspect(found); }, HOLD_MS),
+    timer: inPrep() ? 0 : setTimeout(() => {
+      press = null; lastTap = null;
+      if (!locked()) inspect(found);
+    }, HOLD_MS),
   };
 }
 
@@ -302,7 +337,7 @@ function onUp(e) {
   if (!press || (press.pid !== undefined && e.pointerId !== press.pid)) return;
   const p = press;
   cancelPress();
-  if (p.moved || !p.key || current) { lastTap = null; return; }
+  if (p.moved || !p.key || current || inCapture() || locked()) { lastTap = null; return; }
   const now = Date.now();
   if (lastTap && lastTap.key === p.key && now - lastTap.t <= DOUBLE_TAP_MS
       && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= DOUBLE_TAP_PX) {
@@ -335,11 +370,16 @@ export function init(d) {
     const found = inspectableDef(e.target);
     if (!found) return;
     e.preventDefault();
+    if (locked() || islandTargeting(e.target)) return;
     // A touch long-press in PREP is a hold like any other: it does nothing.
     // A right click (mouse) still opens the card in every phase.
     if (inPrep() && lastPointerType !== 'mouse') return;
     cancelPress();
-    if (!current) inspect(found);
+    if (current) return;
+    // A touch long-press is followed by a real pointerup, which clears the
+    // swallow flag; a mouse right click is not (its pointerup is button 2
+    // and the synthesized event is contextmenu, not click).
+    inspect(found, { fromContextMenu: lastPointerType === 'mouse' });
   });
   window.addEventListener('click', (e) => {
     if (!swallowClick) return;
@@ -347,8 +387,16 @@ export function init(d) {
     e.stopPropagation();
     e.preventDefault();
   }, true);
+  // render/pause.js listens on document, which runs first, and marks the
+  // key consumed: the pause menu is the top layer, so one Escape closes it
+  // and leaves the hero for the next one.
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && current && current.el.classList.contains('hero-interactive')) close();
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (current && current.el.classList.contains('hero-interactive')) {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    }
   });
 }
 

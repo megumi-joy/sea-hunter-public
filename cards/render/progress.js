@@ -2,7 +2,7 @@
 // progression.js, plus the per-match bookkeeping that feeds it.
 //
 //   1. observe(state)       -- called from app.js's renderAll(); counts what
-//      a match did (captures, reveals, drawn rounds, cards and islands seen).
+//      a match did (captures, reveals, mutual sinkings, cards and islands seen).
 //   2. matchEnded(state)    -- called from app.js's handleGameOver() once the
 //      payout is written; records the match and plays the results ladder
 //      inside the P12 game-over panel. The panel's buttons stay disabled
@@ -64,7 +64,11 @@ let track = null;
 function newTrack(state) {
   return {
     ref: state, round: state.roundNum || 1, phase: state.phase, done: false,
-    revealMax: 0, reveals: 0, draws: 0, captures: 0,
+    revealMax: 0, reveals: 0, captures: 0,
+    // DRAW attack results. game.js counts them on the state (mutualSinks);
+    // an online state has no counter, so there the round's combat log is
+    // read instead, peak per round like the reveals.
+    sinks: 0, sinkMax: 0,
     held: new Set(state.p1Islands || []),
     captured: new Set(), seenCards: new Set(), seenIslands: new Set(),
   };
@@ -85,7 +89,8 @@ export function observe(state) {
     // the board, so the round's peak count is what was revealed in it.
     t.reveals += t.revealMax;
     t.revealMax = 0;
-    if (state.roundWinner === 0) t.draws += round - t.round;
+    t.sinks += t.sinkMax;
+    t.sinkMax = 0;
     t.round = round;
   }
 
@@ -94,6 +99,12 @@ export function observe(state) {
     (state[k] || []).forEach((c) => { if (c && c.faceUp) shown++; });
   });
   t.revealMax = Math.max(t.revealMax, shown);
+  if (typeof state.mutualSinks === 'number') {
+    t.sinks = state.mutualSinks;
+  } else {
+    const n = (state.combatLog || []).filter((l) => /destroy each other/i.test(String(l))).length;
+    t.sinkMax = Math.max(t.sinkMax, n);
+  }
 
   ['p1Front', 'p1Reserve', 'p2Front', 'p2Reserve'].forEach((k) => {
     // The player always sees their own cards; the opponent's only once revealed.
@@ -120,9 +131,11 @@ export function matchEnded(state, { won, paid } = {}) {
   t.done = true;
   t.reveals += t.revealMax;
   t.revealMax = 0;
+  t.sinks += t.sinkMax;
+  t.sinkMax = 0;
 
   const res = P.recordMatch({
-    won, score: state.score, captures: t.captures, reveals: t.reveals, drawRounds: t.draws,
+    won, score: state.score, captures: t.captures, reveals: t.reveals, mutualSinks: t.sinks,
     voyage: !!state.voyageMissionId,
     seenCards: [...t.seenCards], seenIslands: [...t.seenIslands], capturedIslands: [...t.captured],
   });

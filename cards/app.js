@@ -303,6 +303,39 @@ function onPlayerReserveClick(slot, card) {
     return;
   }
   if (store.state.turnOwner !== 1) return;
+  // An armed attacker: render/input.js does not light the reserve as a
+  // promotion then, so the tap only drops the attacker.
+  if (selectedAttackerSlot !== null) { cancelAttack(); return; }
+  // Owner 2026-09-16: the first tap of a double tap (which opens the hero)
+  // used to promote the card. The promotion waits PROMOTE_DELAY_MS; a second
+  // tap in that window cancels it (render/hero.js's onSecondTap, or this
+  // handler again on the same slot).
+  if (pendingPromotion) {
+    const same = pendingPromotion.slot === slot;
+    cancelPendingPromotion();
+    if (same) return;
+  }
+  const timer = setTimeout(() => {
+    pendingPromotion = null;
+    promoteReserve(slot);
+  }, PROMOTE_DELAY_MS);
+  pendingPromotion = { slot, timer };
+}
+
+const PROMOTE_DELAY_MS = 280;
+let pendingPromotion = null;   // { slot, timer }
+
+function cancelPendingPromotion() {
+  if (!pendingPromotion) return;
+  clearTimeout(pendingPromotion.timer);
+  pendingPromotion = null;
+}
+
+function promoteReserve(slot) {
+  // Re-checked: the board may have moved on in the 280 ms.
+  if (!store.state || store.combatLocked || store.activeIslandPower) return;
+  if (store.state.phase !== PHASE.COMBAT || store.state.turnOwner !== 1) return;
+  if (selectedAttackerSlot !== null) return;
   if (mpActive) { mpMove(slot); return; }
   const res = moveReserveToFront(store.state, slot);
   UI.setStatus(res.msg);
@@ -350,7 +383,13 @@ async function doAttack(atkSlot, defSlot) {
 }
 
 function doCaptureIsland(slot, zone) {
-  if (mpActive) { mpCaptureIsland(slot, zone); return; }
+  if (mpActive) {
+    // Only the round winner garrisons; the server would refuse the loser's
+    // pick anyway, so do not send it.
+    if (store.state.roundWinner !== 1) return;
+    mpCaptureIsland(slot, zone);
+    return;
+  }
   const res = playerCaptureIsland(store.state, slot, zone);
   UI.setStatus(res.msg.split('\n').pop());
   if (res.ok) {
@@ -518,6 +557,7 @@ function onHandCardClick(idx, card) {
     // A placed card is picked up: tapping the hand puts it back there.
     if (boardPick) { returnPickedCard(); return; }
     pendingHandIdx = idx;
+    pendingPlaceSent = null;
     UI.setStatus(`${card.def.name} -- click an empty slot to place.`);
     // Tap-to-place is the fallback for P2's drag placement and lights the
     // same legal slots -- but it changes no state, so nothing would
@@ -529,6 +569,10 @@ function onHandCardClick(idx, card) {
 }
 
 let pendingHandIdx = null;
+// Online: a 'place' sent for pendingHandIdx and not yet confirmed by a frame
+// ({ handLen, inFlight, timer }).
+let pendingPlaceSent = null;
+const PLACE_RETRY_MS = 1500;
 // PREP: a placed card picked up by a tap ({ zone, slot }), waiting for a
 // free slot to move to or for the hand to take it back. Owner 2026-09-16:
 // tapping a placed card used to send it straight back to hand, which a
@@ -543,6 +587,7 @@ function setBoardPick(pick) {
 function clearPrepPick() {
   if (pendingHandIdx === null && !boardPick) return;
   pendingHandIdx = null;
+  pendingPlaceSent = null;
   boardPick = null;
   Input.refresh();
 }
@@ -576,7 +621,22 @@ function onPrepEmptySlotClick(zone, slot) {
   if (!store.state || store.state.phase !== PHASE.PREP) return;
   if (boardPick) { moveBoardCard(boardPick, zone, slot); return; }
   if (pendingHandIdx === null) return;
-  if (mpActive) { mpPlace(pendingHandIdx, zone, slot); pendingHandIdx = null; return; }
+  if (mpActive) {
+    // The pick is kept until a server frame shows the card placed (see the
+    // update handler in startMultiplayer): a rate-limited or refused 'place'
+    // would otherwise be lost with nothing on screen to say so.
+    // One 'place' in flight at a time: a second tap before the frame could
+    // otherwise place the NEXT card at the same hand index. An error frame
+    // (rate limit, illegal slot) or PLACE_RETRY_MS frees the pick for a retry.
+    if (pendingPlaceSent && pendingPlaceSent.inFlight) return;
+    if (mpPlace(pendingHandIdx, zone, slot)) {
+      const sent = { handLen: store.state.p1Hand.length, inFlight: true };
+      sent.timer = setTimeout(() => { sent.inFlight = false; }, PLACE_RETRY_MS);
+      pendingPlaceSent = sent;
+      UI.setStatus('Placing...');
+    }
+    return;
+  }
   const res = placeCard(store.state, pendingHandIdx, zone, slot);
   UI.setStatus(res.msg);
   pendingHandIdx = null;
@@ -751,7 +811,16 @@ let lastMpError = '';
 function startMultiplayer(room, name) {
   mpSetHandlers({
     update: (state, meta) => {
+      const prevPhase = store.state && store.state.multiplayer ? store.state.phase : null;
       store.state = state;
+      // A frame that shows our placement landed (the card left the hand)
+      // settles the tap-to-place pick; until then it stays armed, so a
+      // throttled 'place' can simply be tapped again (see onPrepEmptySlotClick).
+      if (pendingHandIdx !== null && pendingPlaceSent
+          && (state.phase !== PHASE.PREP || state.p1Hand.length < pendingPlaceSent.handLen)) {
+        pendingHandIdx = null;
+        pendingPlaceSent = null;
+      }
       UI.showScreen('game');
       if (meta.kind === 'start') {
         // The server restarts a finished room when someone joins; drop the
@@ -759,9 +828,13 @@ function startMultiplayer(room, name) {
         UI.hideGameOver();
         UI.setStatus(`Match against ${meta.opponent || 'opponent'}`);
       }
-      if (meta.log) UI.addLogEntry(String(meta.log).split('\n')[0]);
+      if (meta.log) String(meta.log).split('\n').filter(Boolean).forEach((l) => UI.addLogEntry(l));
       renderAll();
       updateReadyButton();
+      if (state.phase === 'ISLAND_CAPTURE' && prevPhase !== 'ISLAND_CAPTURE') {
+        UI.setStatus(state.roundWinner === 1 ? 'You won the round -- tap a ship to hold the island'
+          : state.roundWinner === 2 ? 'The opponent won the round' : 'The round is a draw');
+      }
       if (meta.kind === 'over') {
         // The server's own end reason (forfeit, disconnect, a normal points
         // win) only exists on this frame -- multiplayer.js passes it through
@@ -782,6 +855,8 @@ function startMultiplayer(room, name) {
         const code = (msg && msg.code) || '';
         const text = (msg && msg.msg) || 'Server error';
         lastMpError = code === 'rate_limit' ? '' : text;
+        // The 'place' this pick sent was refused: the pick stays, tap again.
+        if (pendingPlaceSent) pendingPlaceSent.inFlight = false;
         UI.setStatus(code === 'rate_limit' ? 'Too fast -- try again in a second.'
           : code === 'not_your_turn' ? 'Not your turn yet.'
           : text);
@@ -1094,11 +1169,69 @@ function onReady() {
   // the slots are full.
   aiDeploy(store.state, 2);
   const res = lockIn(store.state);
-  UI.setStatus(res.msg);
-  if (res.ok) {
-    renderAll();
+  if (!res.ok) { UI.setStatus(res.msg); return; }
+  const lines = res.msg.split('\n').filter(Boolean);
+  // lockIn() runs checkRoundEnd() like every action: the side to move may
+  // have no legal attack, and the round is over before it began.
+  if (lines.length > 1) lines.slice(1).forEach((l) => UI.addLogEntry(l));
+  UI.setStatus(lines[lines.length - 1]);
+  renderAll();
+  if (store.state.phase === PHASE.COMBAT) {
+    holdWhileBandSlides();
     if (store.state.turnOwner === 2) setTimeout(() => doAiTurn(), 900);
+    return;
   }
+  // ISLAND_CAPTURE waits for the player's garrison pick (the status says
+  // so); a lost or drawn round is already resolved and back in PREP.
+  updateReadyButton();
+  afterAction();
+}
+
+// Lock-in moves the island band to the top: .opp-section slides down for
+// 0.5 s (render/stage.css .band-top) while the AI's fleet flies into its
+// slots (ui.js's .flying, staggered), and render/fx.js's attack flight reads
+// live rects -- an attack in that window lands where the target WAS. Hold
+// the board (the same combatLocked every input path checks) until the slide
+// has ended (transitionend, or BAND_SLIDE_FALLBACK_MS) and no enemy card is
+// still in the air, never longer than the AI's own 900 ms. No transition
+// (prefers-reduced-motion, a landscape phone where the band does not move):
+// no wait.
+const BAND_SLIDE_FALLBACK_MS = 550;
+const BOARD_SETTLE_MAX_MS = 900;
+function holdWhileBandSlides() {
+  const opp = document.querySelector('#game-screen .opp-section');
+  if (!opp || store.combatLocked) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const cs = getComputedStyle(opp);
+  const props = cs.transitionProperty.split(',').map((p) => p.trim());
+  const durs = cs.transitionDuration.split(',').map((d) => parseFloat(d) || 0);
+  const i = props.findIndex((p) => p === 'transform' || p === 'all');
+  if (i < 0 || !durs[i % durs.length]) return;
+  store.combatLocked = true;
+  let slid = false;
+  let done = false;
+  const flying = () => !!opp.querySelector('.card.flying');
+  const release = () => {
+    if (done) return;
+    done = true;
+    opp.removeEventListener('transitionend', onEnd);
+    opp.removeEventListener('animationend', onEnd);
+    clearTimeout(slideTimer);
+    clearTimeout(capTimer);
+    store.combatLocked = false;
+    Input.refresh();
+  };
+  const settle = () => { if (slid && !flying()) release(); };
+  const onEnd = (e) => {
+    if (e.type === 'transitionend' && e.target === opp && e.propertyName === 'transform') slid = true;
+    // ui.js drops .flying in its own animationend listener, which may run
+    // after this one: look again on the next frame.
+    requestAnimationFrame(settle);
+  };
+  opp.addEventListener('transitionend', onEnd);
+  opp.addEventListener('animationend', onEnd);
+  const slideTimer = setTimeout(() => { slid = true; settle(); }, BAND_SLIDE_FALLBACK_MS);
+  const capTimer = setTimeout(release, BOARD_SETTLE_MAX_MS);
 }
 
 function onAutoPlace() {
@@ -1140,7 +1273,9 @@ function initEvents() {
   // no rules either; it only needs to drop whatever gesture input.js had
   // started on the same press, and a way to build a big island card.
   Hero.init({
+    store,
     abortGesture: Input.abortGesture,
+    onSecondTap: cancelPendingPromotion,
     getPhase: () => (store.state ? store.state.phase : null),
     // A double tap opens the hero; whatever its first tap selected (a hand
     // card, a placed card, an attacker) is dropped.
@@ -1149,6 +1284,7 @@ function initEvents() {
       clearPrepPick();
       if (picked) UI.setStatus('');
       cancelAttack();
+      cancelPendingPromotion();
     },
     buildIsland: (def) => buildIslandEl(def, 'big', {}),
   });

@@ -117,16 +117,18 @@ function deriveResult(state, prev) {
   const island = prev.activeIsland;
   const gainedByP1 = island && (state.p1Islands || []).includes(island) && !prev.p1Islands.includes(island);
   const gainedByP2 = island && (state.p2Islands || []).includes(island) && !prev.p2Islands.includes(island);
-  let winner = gainedByP1 ? 1 : gainedByP2 ? 2 : 0;
-  // Nobody captured: either a draw round, or a round won with no qualifying
-  // unit left to garrison with (game.js's hasEligibleCapturer branch). Only
-  // single-player state carries roundWinner, so this refinement is local.
-  if (!winner && (state.roundWinner === 1 || state.roundWinner === 2)) winner = state.roundWinner;
+  // The engine's own verdict first: game.js sets roundWinner, and an online
+  // state carries the server's round_winner (multiplayer.js's adaptState).
+  // The capture is only the fallback -- a round can be won with no
+  // qualifying unit left to garrison with (hasEligibleCapturer), and a
+  // re-garrison at round end is not a capture.
+  let winner = state.roundWinner === 1 || state.roundWinner === 2 ? state.roundWinner
+    : gainedByP1 ? 1 : gainedByP2 ? 2 : 0;
 
   // The engine's own combat log keeps the round's last lines (a yield is
   // logged there, not always on the status line), local matches only.
   const lastLog = (state.combatLog || []).slice(-2).join(' ');
-  const text = (prev.status + ' ' + statusNow() + ' ' + recentLog() + ' ' + lastLog).toLowerCase();
+  const text = (prev.status + ' ' + statusNow() + ' ' + recentLog() + ' ' + lastLog + ' ' + (state.winReason || '')).toLowerCase();
   let reason;
   if (/surrender|forfeit|disconnect/.test(text)) reason = 'Surrender';
   else if (/stalemate|cannot act|neither side/.test(text)) reason = 'Stalemate -- neither fleet could act';
