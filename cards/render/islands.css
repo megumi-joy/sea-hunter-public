@@ -168,7 +168,11 @@ body.no-card-art .ic-card .ic-img { display: none; }
 .island-detail {
   position: absolute;
   inset: 0;
-  z-index: 40;
+  /* Above the action buttons (40), a hovered hand card (50), the log (60)
+     and the impact overlay (70): on a phone recording (Motorola g84,
+     2026-09-16) dealt cards flew over this panel and Auto-place / Ready
+     stayed tappable under it. Still below the capture ghost and hero (90). */
+  z-index: 80;
   display: flex;
   align-items: center;
   justify-content: center;
