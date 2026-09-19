@@ -1554,7 +1554,11 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if (demo === 'gameover') {
     setTimeout(() => {
       demoBoard();
-      store.state.score = [3, 1];
+      // `&verdict=loss` shoots the defeat scene instead of the victory one --
+      // the cold wash, the sinking fleet and the "Defeat pay" ladder. Debug
+      // only, like every other branch here; it changes nothing but the score
+      // the demo hands the real game-over path.
+      store.state.score = params.get('verdict') === 'loss' ? [1, 3] : [3, 1];
       store.state.roundNum = 6;
       store.state.winReason = 'points';
       store.state.phase = PHASE.GAME_OVER;

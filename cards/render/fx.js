@@ -677,16 +677,33 @@ export function flip(el, swap) {
   revealCue();
   if (REDUCED() || typeof el.animate !== 'function') { if (swap) swap(); return; }
   const half = dur(150);
-  anim(el, [
+  // BUGFIX (phase G5, found by comparing this against the Godot port): anim()
+  // fills BOTH and composites ADD, so the first half does not go away when it
+  // ends -- it holds rotateY(90deg) on the card for good, and the second
+  // half's -90 -> 0 adds to it. The card therefore settled at 90deg: edge on,
+  // i.e. invisible. In play the next renderAll() replaced the element and hid
+  // the damage; ?fxfreeze and the phase G4 'revealed' frame showed the slot
+  // empty, which is what it really looked like until the next render.
+  // Cancelling the first half at the midpoint -- the moment the face is
+  // swapped, where it is already at its end value -- leaves the second half
+  // as the only rotation on the card, and it ends on the identity transform.
+  const first = anim(el, [
     { transform: 'perspective(600px) rotateY(0deg)' },
     { transform: 'perspective(600px) rotateY(90deg)' },
   ], { duration: half, easing: 'ease-in', composite: 'add' });
   after(half, () => {
+    if (first) {
+      live.anims.delete(first);
+      try { first.cancel(); } catch (e) { /* already done */ }
+    }
     if (swap) swap();
-    anim(el, [
+    // dropWhenDone: this one also fills additively and also ends on the
+    // identity transform, so it is dropped the moment it finishes rather than
+    // left stacked on a card that lives for the whole match.
+    dropWhenDone(anim(el, [
       { transform: 'perspective(600px) rotateY(-90deg)' },
       { transform: 'perspective(600px) rotateY(0deg)' },
-    ], { duration: half, easing: 'ease-out', composite: 'add' });
+    ], { duration: half, easing: 'ease-out', composite: 'add' }));
   });
 }
 
@@ -716,10 +733,10 @@ export function playPendingReveals() {
     if (!el || el.classList.contains('face-down')) return;
     // One cue for the batch, however many cards a radar sweep turned over.
     if (!sounded) { sounded = true; revealCue(); }
-    anim(el, [
+    dropWhenDone(anim(el, [
       { transform: 'perspective(600px) rotateY(-90deg)' },
       { transform: 'perspective(600px) rotateY(0deg)' },
-    ], { duration: dur(180), easing: 'ease-out', composite: 'add' });
+    ], { duration: dur(180), easing: 'ease-out', composite: 'add' }));
   });
 }
 
