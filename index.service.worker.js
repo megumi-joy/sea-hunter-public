@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1789782389|11231332';
+const CACHE_VERSION = '1789926862|13529578';
 /** @type {string} */
 const CACHE_PREFIX = 'Sea Hunter-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
