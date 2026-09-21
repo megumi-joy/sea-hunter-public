@@ -432,7 +432,7 @@ async function walk(deps) {
 
   // 17. Shop, entered by its button on the game-over modal -- the
   // route a player actually takes to spend what the match just paid.
-  await step('trading-post', async () => { click('btn-go-shop'); await sleep(400); });
+  await step('shop', async () => { click('btn-go-shop'); await sleep(400); });
 
 }
 

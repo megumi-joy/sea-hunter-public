@@ -1,6 +1,6 @@
 // Shell screens (phase P7) -- markup helpers for everything OUTSIDE the
-// match: the menu, campaign chart, online join, settings, rules, trading
-// post, leaderboard and profile.
+// match: the menu, campaign chart, online join, settings, rules, shop,
+// leaderboard and profile.
 //
 // Same split as the rest of render/: this module only builds strings and
 // elements. ui.js keeps the state, the event wiring and the exported
@@ -152,7 +152,7 @@ export function artifactArt(id, size = 40) {
   return itemImg(id, size, 'shop-art item-art') || icon(id, { size });
 }
 
-// ---- Trading post ----------------------------------------------------
+// ---- Shop ------------------------------------------------------------
 export function coinRowHtml(balance) {
   return `<span class="coin coin-gold">${itemImg('coin_gold', 20)}${balance.gold} gold</span>`
     + `<span class="coin coin-crystal">${itemImg('coin_crystal', 20)}${balance.crystals} crystals</span>`;
