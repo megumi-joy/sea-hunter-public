@@ -189,7 +189,7 @@ function countUp(el, from, to, ms, fmt) {
   requestAnimationFrame(tick);
 }
 
-// Coin chips from a row to the wallet -- the Trading Post's flight
+// Coin chips from a row to the wallet -- the shop's flight
 // (ui.js's flyCoinToWallet), re-aimed at the ladder's wallet.
 function flyCoins(fromEl, walletEl, n) {
   if (reduced() || !fromEl || !walletEl) return;

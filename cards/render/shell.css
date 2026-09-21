@@ -2,7 +2,7 @@
    Sea Hunter -- P7 "Shell screens".
 
    Everything outside the match: loading, main menu, campaign chart,
-   online join, profile, trading post, leaderboard, rules and settings.
+   online join, profile, shop, leaderboard, rules and settings.
    P0-P6 moved the match onto the MTG-Arena-style stage but left these on
    the old look (cream page, dark panels, emoji, black pill buttons), so
    the app read as two different games either side of the Play button.
@@ -1106,7 +1106,7 @@
 /* ============================================================
    P9 "Art-director pass".
 
-   fix 4 -- trading post, leaderboard and profile were light cream lists on
+   fix 4 -- shop, leaderboard and profile were light cream lists on
    the sea: a settings page wearing a game's wallpaper. They become dark
    nautical panels (deck-blue, a top-lit edge, a real shadow), the shop
    grows 40px illustrated artifact art (render/shell.js's artifactArt),
@@ -1736,7 +1736,7 @@
 }
 
 /* ============================================================
-   P12 "Living board", part 5 -- Trading Post polish.
+   P12 "Living board", part 5 -- Shop polish.
 
    Three things, and all three exist because the shelf up to P10 was a
    list of rows that all looked the same, bought instantly on one tap and

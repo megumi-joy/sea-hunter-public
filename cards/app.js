@@ -765,7 +765,7 @@ function startGame(difficulty = 2, opts = {}) {
   // input.js is reset from here instead because app.js, not ui.js, owns it.
   Input.resetMatchState();
   store.state = createGameState(difficulty, opts);
-  // Artifacts bought at the Trading Post sail with the player: the hold is
+  // Artifacts bought at the shop sail with the player: the hold is
   // emptied into this match here, and whatever goes unspent is returned at
   // GAME_OVER (see handleGameOver). Kept out of createGameState so the pure
   // engine stays independent of localStorage.
@@ -1036,7 +1036,7 @@ function endVoyage(won, msg) {
   openCampaignScreen();
 }
 
-// -- Trading Post (shop) ---------------------------------------------
+// -- Shop (artifacts) ----------------------------------------
 // Reads the catalogue off economy.js's price table, so an artifact added to
 // artifacts.js without a price simply doesn't go on sale (rather than
 // showing up free).
@@ -1148,7 +1148,7 @@ function surrenderMatch() {
 }
 
 // Abandon the match for the main menu. handleGameOver is the ONLY place
-// artifacts bought at the Trading Post come back out of a match, so leaving
+// artifacts bought at the shop come back out of a match, so leaving
 // early has to return them itself or they are silently lost (startGame has
 // carried the same guard since the shop landed).
 function leaveMatchForMenu() {

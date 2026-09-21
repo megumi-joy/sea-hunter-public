@@ -1232,7 +1232,7 @@ function renderSettings(settings, onToggle, opts = {}) {
 }
 
 
-// -- Trading Post (artifact shop) -----------------------------------
+// -- Shop (artifacts) ---------------------------------------
 // Purely presentational: every rule (price, affordability, what the hold
 // is) lives in economy.js -- this renders what it is handed and calls back
 // on a buy click. `balance` = { gold, crystals }, `items` = [{ id, def,
@@ -1293,8 +1293,8 @@ function flyCoinToWallet(fromEl) {
 }
 
 // The Buy button turns into an inline Confirm / Cancel pair IN PLACE -- no
-// modal, no re-render, nothing reflowed but the one row. A trading post that
-// takes 70 gold off a mis-tap is a trading post players stop visiting; a
+// modal, no re-render, nothing reflowed but the one row. A shop that
+// takes 70 gold off a mis-tap is a shop players stop visiting; a
 // dialog over the shelf is the other failure, where confirming costs a
 // screen transition each way.
 function armConfirm(card, btn, id, onBuy) {

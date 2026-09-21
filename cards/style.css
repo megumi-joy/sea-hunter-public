@@ -893,7 +893,7 @@ table.leaderboard-table tr:first-child td { color: var(--accent); font-weight: 7
 
 .go-campaign-note { color: var(--accent); font-size: 0.9rem; margin: 6px 0; }
 
-/* Trading Post (artifact shop) -- reuses the campaign level-select card
+/* Shop (artifacts) -- reuses the campaign level-select card
    shape so the two "pick one of a grid" screens read as the same UI. */
 .shop-inner { max-width: 760px; }
 .shop-items {

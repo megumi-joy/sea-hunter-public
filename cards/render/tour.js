@@ -2,7 +2,7 @@
 // mirroring the Godot client's --ui-tour. Opened with ?tour=1 it starts a
 // vs-AI match under a FIXED seed and steps through menu, campaign, online,
 // settings, rules, PREP, drag, arc, three attacks, island capture, round
-// end, round two, game over and the Trading Post.
+// end, round two, game over and the shop.
 //
 // Every step announces itself twice: `document.title` becomes
 // "tour:<step>", and a `tour:step` CustomEvent is dispatched on `window`
@@ -430,7 +430,7 @@ async function walk(deps) {
     await sleep(500);
   });
 
-  // 17. Trading Post, entered by its button on the game-over modal -- the
+  // 17. Shop, entered by its button on the game-over modal -- the
   // route a player actually takes to spend what the match just paid.
   await step('trading-post', async () => { click('btn-go-shop'); await sleep(400); });
 

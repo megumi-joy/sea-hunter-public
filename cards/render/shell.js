@@ -118,7 +118,7 @@ export function toggleRowHtml({ key, label, desc, checked }) {
 }
 
 // ---- Item art (P9 fix 4, P13 fix 4) --------------------------------------
-// P9 replaced the trading post's monoline glyphs with flat filled drawings
+// P9 replaced the shop's monoline glyphs with flat filled drawings
 // inlined here. P13 replaces those in turn with illustrated SVGs in the
 // card art's style -- one key light from the top-left, a dark base with the
 // mid tone offset over it, a highlight on the lit edge and a contact shadow
