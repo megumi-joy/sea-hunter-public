@@ -153,14 +153,17 @@ export function artifactArt(id, size = 40) {
 }
 
 // ---- Shop ------------------------------------------------------------
+// "1 crystal", "2 crystals" -- gold reads right at any count, crystals do not.
+function crystalsText(n) { return `${n} crystal${n === 1 ? '' : 's'}`; }
+
 export function coinRowHtml(balance) {
   return `<span class="coin coin-gold">${itemImg('coin_gold', 20)}${balance.gold} gold</span>`
-    + `<span class="coin coin-crystal">${itemImg('coin_crystal', 20)}${balance.crystals} crystals</span>`;
+    + `<span class="coin coin-crystal">${itemImg('coin_crystal', 20)}${crystalsText(balance.crystals)}</span>`;
 }
 
 export function shopCardHtml({ id, def, price }) {
   const isCrystal = price.crystals !== undefined;
-  const priceText = isCrystal ? `${price.crystals} crystals` : `${price.gold} gold`;
+  const priceText = isCrystal ? crystalsText(price.crystals) : `${price.gold} gold`;
   // The price is a chip, not a coloured word: it is the one number in the
   // row a player compares against their balance, and the two currencies
   // have to be told apart at a glance rather than read.
