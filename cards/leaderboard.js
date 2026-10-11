@@ -60,6 +60,10 @@ async function withTimeout(promise, ms) {
   }
 }
 
+export function isTestRow(e) {
+  return /^E2E-/i.test(String((e && (e.username || e.name)) || ''));
+}
+
 export async function fetchRemoteLeaderboard(limit = 10) {
   try {
     const res = await withTimeout(
@@ -68,7 +72,10 @@ export async function fetchRemoteLeaderboard(limit = 10) {
     );
     if (!res.ok) return null;
     const data = await res.json();
-    return Array.isArray(data.leaderboard) ? data.leaderboard : null;
+    // The end-to-end tests play real matches against the live server as
+    // "E2E-Alpha" / "E2E-Bravo", and every finished match posts a score, so
+    // their rows land on the global board players see. They are not players.
+    return Array.isArray(data.leaderboard) ? data.leaderboard.filter((e) => !isTestRow(e)) : null;
   } catch (e) {
     return null; // offline, CORS, 404 (route not deployed yet), timeout -- all degrade silently
   }
