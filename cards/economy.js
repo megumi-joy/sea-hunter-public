@@ -47,7 +47,7 @@ export const REWARDS = {
 };
 
 function defaultEconomy() {
-  return { gold: 0, crystals: 0, hold: {} }; // hold[artifactId] = count
+  return { gold: 0, crystals: 0, hold: {}, atSea: [] }; // hold[artifactId] = count
 }
 
 export function loadEconomy() {
@@ -67,6 +67,7 @@ export function loadEconomy() {
       if (Number.isFinite(n) && n > 0) hold[id] = n;
     }
     eco.hold = hold;
+    eco.atSea = Array.isArray(eco.atSea) ? eco.atSea.filter((id) => ARTIFACT_IDS.includes(id)) : [];
     return eco;
   } catch (e) {
     return defaultEconomy();
@@ -126,8 +127,21 @@ export function loadHoldIntoMatch() {
     for (let i = 0; i < n; i++) loadout.push(id);
   }
   eco.hold = {};
+  // Remembered until the match settles, so a tab closed mid-match does not
+  // sink what the player paid for (recoverHoldAtSea on the next load).
+  eco.atSea = [...(eco.atSea || []), ...loadout];
   saveEconomy(eco);
   return loadout;
+}
+
+// A match that never reached GAME_OVER (tab closed, page reloaded) left its
+// loadout at sea; put it back in the hold. Called once at boot.
+export function recoverHoldAtSea() {
+  const eco = loadEconomy();
+  if (!eco.atSea.length) return;
+  for (const id of eco.atSea) eco.hold[id] = (eco.hold[id] || 0) + 1;
+  eco.atSea = [];
+  saveEconomy(eco);
 }
 
 // Called at GAME_OVER. `loadout` is what loadHoldIntoMatch() handed out at
@@ -140,9 +154,18 @@ export function returnUnusedToHold(loadout = [], remaining = []) {
     const count = (arr) => arr.reduce((acc, id) => (acc[id] = (acc[id] || 0) + 1, acc), {});
     const loaded = count(loadout);
     const left = count(remaining);
+    // Capped by what is still at sea: if another load already recovered it,
+    // returning it again here would mint a free copy.
+    const sea = count(eco.atSea || []);
     for (const [id, n] of Object.entries(loaded)) {
-      const back = Math.min(n, left[id] || 0);
+      const back = Math.min(n, left[id] || 0, sea[id] || 0);
       if (back > 0) eco.hold[id] = (eco.hold[id] || 0) + back;
+    }
+    for (const [id, n] of Object.entries(loaded)) {
+      for (let i = 0; i < n; i++) {
+        const k = eco.atSea.indexOf(id);
+        if (k >= 0) eco.atSea.splice(k, 1);
+      }
     }
     saveEconomy(eco);
     return eco.hold;

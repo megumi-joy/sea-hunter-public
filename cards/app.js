@@ -9,7 +9,7 @@ import { mpActive, mpUsePower, mpConnect, mpDisconnect, mpSetHandlers,
 import { ARTIFACTS, useArtifact } from './artifacts.js';
 import { ARTIFACT_IDS } from './artifacts.js';
 import { getBalance, getHold, priceOf, canAfford, buyArtifact,
-         loadHoldIntoMatch, returnUnusedToHold, awardMatchRewards } from './economy.js';
+         loadHoldIntoMatch, returnUnusedToHold, recoverHoldAtSea, awardMatchRewards } from './economy.js';
 import { MISSION_COUNT, NODE_INFO, missionMeta, generateChart, move as voyageMove,
          resolveBattle as voyageResolveBattle, isStranded, nodeById,
          saveVoyage, loadVoyage, loadVoyageProgress, recordVoyageResult } from './voyage.js';
@@ -1478,6 +1478,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // otherwise a returning player who turned art off would see it flash on
   // for the first render every time.
   UI.applyCardArtSetting(loadSettings().cardArt);
+  recoverHoldAtSea();
   UI.showScreen('menu');
   initEvents();
   refreshMenuProfile();
