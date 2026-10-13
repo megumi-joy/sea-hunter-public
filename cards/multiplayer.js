@@ -230,14 +230,19 @@ export function mpConnect(room, name) {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${proto}//${window.location.host}${apiPrefix()}/v1/games/sea-hunter/ws/${encodeURIComponent(room)}?name=${encodeURIComponent(name || 'player')}`;
   try {
-    ws = new WebSocket(url);
+    const sock = new WebSocket(url);
+    ws = sock;
     ws.onopen = () => { mpActive = true; rematching = false; store.mode = 'multiplayer'; if (onEvent) onEvent('open', roomId); };
     // The close code matters: the server refuses a full room with an error
     // frame and close(1008), and both land in the same tick -- without the
     // code the generic "disconnected" text overwrites the real reason.
-    ws.onclose = (ev) => { mpActive = false; store.mode = 'single'; if (onEvent) onEvent('close', { room: roomId, code: ev && ev.code, intentional: rematching }); rematching = false; };
+    // A rematch drops this socket and opens the next 250 ms later; on a slow
+    // link the old close can land after the new open. It must not mark the
+    // live socket's session as gone.
+    ws.onclose = (ev) => { if (ws && ws !== sock) return; mpActive = false; store.mode = 'single'; if (onEvent) onEvent('close', { room: roomId, code: ev && ev.code, intentional: rematching }); rematching = false; };
     ws.onerror = () => { if (onEvent) onEvent('error', 'connection failed'); };
     ws.onmessage = (evt) => {
+      if (ws !== sock) return;
       let msg;
       try { msg = JSON.parse(evt.data); } catch (e) { return; }
       handleServerMessage(msg);
